@@ -1,7 +1,51 @@
 from graph import Graph, Zone
 
+# NEW: 合法 zone 类型集合
+VALID_ZONE_TYPES = {"normal", "blocked", "restricted", "priority"}
 
-def parse_metadata(meta) -> dict[str, str]:
+
+# NEW: 统一报错（带行号）
+def parse_error(line_no: int, message: str) -> ValueError:
+    return ValueError(f"Line {line_no}: {message}")
+
+
+# NEW: 统一报错（带行号）
+def split_metadata(line: str, line_no: int) -> tuple[str, str | None]:
+    open_count = line.count("[")
+    close_count = line.count("]")
+
+    # 没有 metadata
+    if open_count == 0 and close_count == 0:
+        return line.strip(), None
+
+    # 必须刚好一对
+    if open_count != 1 or close_count != 1:
+        raise parse_error(line_no, "meta must contain exactly one [...]block")
+
+    open_index = line.index("[")
+    close_index = line.index("]")
+
+    # 顺序必须正确
+    if close_index < open_index:
+        raise parse_error(line_no, "invalid metadata order")
+
+    # NEW: metadata 后不能有额外内容
+    after = line[close_index + 1:].strip()
+    if after:
+        raise parse_error(line_no,
+                          "metadata must appear at the end of the line")
+    main_part = line[:open_index].strip()
+    meta_part = line[open_index: close_index + 1].strip()
+
+    # NEW: 必须有主体
+    if not main_part:
+        raise parse_error(line_no, "missing statement before metadata")
+
+    return main_part, meta_part
+
+
+# # CHANGED: 增加 line_no + 严格检查 key=value
+def parse_metadata(meta: str, line_no: int) -> dict[str, str]:
     """
     把 metadata 字符串解析成字典
     输入：
@@ -10,13 +54,55 @@ def parse_metadata(meta) -> dict[str, str]:
     {"zone": "restricted", "max_drones": "2"}
     """
 
+    # 防御性检查（不是必须，但更安全）
+    if not (meta.startswith("[") and meta.endswith("]")):
+        raise parse_error(line_no, "invalid metadata block")
+
     result: dict[str, str] = {}
-    meta = meta.strip("[]")
-    parts: list[str] = meta.split()  # 按空格把字符串切开，变成列表。
-    for p in parts:
-        k, v = p.split("=")
+    content = meta[1:-1]
+
+    if not content:
+        return result
+
+    parts: list[str] = content.split()
+    # 按空格把字符串切开，变成列表。
+    for part in parts:
+        if "=" not in part:
+            raise parse_error(line_no, f"invalid metadata entry: {part}")
+
+        k, v = part.split("=")
+        if not k or not v:
+            raise parse_error(line_no, f"invalid metadata entry: {part}")
+        if k in result:
+            raise parse_error(line_no, f"duplicate metadata key: {k}")
         result[k] = v
     return result
+
+
+# NEW: zone 名合法性检查
+def validate_zone_name(name: str, line_no: int) -> None:  # why
+    if "-" in name or " " in name:
+        raise parse_error(line_no, f"invalid zone name: {name}")
+
+
+# NEW: 正整数检查
+def parse_positive_int(value: str, field: str, line_no: int) -> int:  # field?
+    try:
+        number = int(value)
+    except ValueError as exc:
+        raise parse_error(line_no, f"{field} must be an integer") from exc  # ?
+
+    if number <= 0:
+        raise parse_error(line_no, f"{field} must be a positive integer")
+    return number
+
+
+# NEW: 坐标解析
+def parse_coordinate(value: str, field: str, line_no: int) -> int:
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise parse_error(line_no, f"{field} must be an integer") from exc
 
 
 def parse_file(filename: str) -> tuple[int, Graph]:
@@ -27,67 +113,153 @@ def parse_file(filename: str) -> tuple[int, Graph]:
     """
 
     graph = Graph()
-    nb_drones: int = 0
+    nb_drones: int | None = None
+
+    seen_names: set[str] = set()
+    seen_start = False
+    seen_end = False
 
     with open(filename, "r", encoding="utf-8") as f:
-        # what is utf-8??? and as f(打开文件，并把文件对象命名为 f)
-        for line in f:
-            line = line.strip()  # 去掉一行两边的空格、换行符 \n 等。
+
+        for line_no, raw_line in enumerate(f, start=1):
+            # enumerate 内置函数，它会为可迭代对象（如文件对象 f）中的每个元素生成一个索引和元素本身。
+            # 默认索引从 0 开始，但可以通过 start 参数指定起始值。
+            line = raw_line.strip()
 
             if not line or line.startswith("#"):
                 continue
 
-            if line.startswith("nb_drones"):
-                nb_drones = int(line.split(":")[1])
+            # CHANGED: nb_drones 严格检查
+            if line.startswith("nb_drones:"):
+                if nb_drones is not None:  # why it can be not none?
+                    raise parse_error(line_no,
+                                      "duplicate nb_drones definition")
+                value = line.split(":", 1)[1].strip()
+                nb_drones = parse_positive_int(value, "nb_drones", line_no)
+                continue
+            if nb_drones is None:
+                raise parse_error(line_no,
+                                  "nb_drones must be defined "
+                                  "before other entries")
 
-            elif line.startswith("start_hub"):
-                parts = line.split()
-                # start_hub: start 0 0
-                name, x, y = parts[1], int(parts[2]), int(parts[3])
-                zone = Zone(name, x, y)
-                graph.add_zone(zone)
-                graph.start = name  # only a name str
+            # CHANGED: zone 解析升级
+            if (
+                line.startswith("start_hub:")
+                or line.startswith("end_hub:")
+                or line.startswith("hub:")
+            ):
+                main_part, meta_part = split_metadata(line, line_no)
+                parts = main_part.split()
+                if len(parts) != 4:
+                    raise parse_error(line_no, "invalid zone definition")
+                prefix = parts[0]
+                name = parts[1]
 
-            elif line.startswith("end_hub"):
-                parts = line.split()
-                name, x, y = parts[1], int(parts[2]), int(parts[3])
-                zone = Zone(name, x, y, max_drones=999)
-                # 999 where is described???
-                # 为什么是 999
-                # 这是简化写法，想表达：
-                # 终点几乎可以无限容纳 drone
-                # 因为 end zone 通常不应该像普通 zone 一样只允许 1 架。
-                graph.add_zone(zone)
-                graph.end = name
+                validate_zone_name(name, line_no)
 
-            elif line.startswith("hub"):
-                parts = line.split()
-                name, x, y = parts[1], int(parts[2]), int(parts[3])
-                zone_type: str = "normal"
-                max_drones: int = 1
+                if name in seen_names:
+                    raise parse_error(line_no, f"duplicate zone name: {name}")
+                x = parse_coordinate(parts[2], "x", line_no)
+                y = parse_coordinate(parts[3], "y", line_no)
 
-                if "[" in line:
-                    # 👉 如果这行里有 [，说明它带了 metadata。
-                    # 例如：
-                    # hub: a 1 0 [zone=restricted max_drones=2]
-                    meta = line[line.index("[")]
-                    # 从 [ 开始切到最后，把 metadata 那一段取出来。
-                    md = parse_metadata(meta)
-                    if "zone" in md:
-                        zone_type = md["zone"]
-                    if "max_drones" in md:
-                        max_drones = int(md["max_drones"])
+                zone_type = "normal"
+                max_drones = 1
+
+                # NEW: metadata 解析
+                if meta_part is not None:
+                    metadata = parse_metadata(meta_part, line_no)
+                    # NEW: 限制 zone metadata key
+                    for key in metadata:
+                        if key not in {"zone", "max_drones"}:
+                            raise parse_error(line_no,
+                                              f"invalid metadata"
+                                              f"key for zone: {key}")
+
+                    if "zone" in metadata:
+                        zone_type = metadata["zone"]
+                        if zone_type not in VALID_ZONE_TYPES:
+                            raise parse_error(line_no,
+                                              f"invalid zone"
+                                              f"type: {zone_type}")
+
+                    if "max_drones" in metadata:
+                        max_drones = parse_positive_int(
+                            metadata["max_drones"], "max_drones", line_no
+                        )
 
                 zone = Zone(name, x, y, zone_type, max_drones)
                 graph.add_zone(zone)
+                seen_names.add(name)
 
-            elif line.startswith("connection"):
-                # connection: start-a
-                parts = line.split()
-                z1, z2 = parts[1].split("-")
-                graph.add_connection(z1, z2)
-    return nb_drones, graph
+                # NEW: start/end 唯一性检查
+                if prefix == "start_hub:":
+                    if seen_start:
+                        raise parse_error(line_no, "duplicate start_hub")
+                    graph.start = name
+                    seen_start = True
 
+                elif prefix == "end_hub:":
+                    if seen_end:
+                        raise parse_error(line_no, "duplicate end_hub")
+                    graph.end = name
+                    seen_end = True
+
+                continue
+
+            # CHANGED: connection 解析升级 connection: start-a
+            if line.startswith("connection"):
+                main_part, meta_part = split_metadata(line, line_no)
+                parts = main_part.split()
+
+                if len(parts) != 2:
+                    raise parse_error(line_no,
+                                      "invalid connection definition")
+                if "-" not in parts[1]:
+                    raise parse_error(line_no,
+                                      "connection must use "
+                                      "zone1-zone2 format")
+                z1, z2 = parts[1].split("-", 1)
+
+                if z1 not in graph.zones:
+                    raise parse_error(line_no,
+                                      f"unknown zone in connection: {z1}")
+                if z2 not in graph.zones:
+                    raise parse_error(line_no,
+                                      f"unknown zone in connection: {z2}")
+
+                capacity = 1
+
+                # NEW: connection metadata
+                if meta_part is not None:
+                    metadata = parse_metadata(meta_part, line_no)
+
+                    for key in metadata:
+                        if key != "max_link_capacity":
+                            raise parse_error(
+                                line_no, f"invalid metadata"
+                                f"key for connection: {key}"
+                            )
+                    if "max_link_capacity" in metadata:
+                        capacity = parse_positive_int(
+                            metadata["max_link_capacity"],
+                            "max_link_capacity",
+                            line_no,
+                        )
+
+                graph.add_connection(z1, z2, capacity)
+                continue
+            # NEW: 未知语句直接报错 whats the case for this?
+            raise parse_error(line_no, f"unknown statement: {line}")
+
+            # NEW: 最终检查
+        if nb_drones is None:
+            raise ValueError("Missing nb_drones definition")
+        if not seen_start:
+            raise ValueError("Missing start_hub definition")
+        if not seen_end:
+            raise ValueError("Missing end_hub definition")
+
+        return nb_drones, graph
 
 # parse_file(filename) 做的事情是：
 
