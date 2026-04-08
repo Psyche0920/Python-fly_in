@@ -1,35 +1,40 @@
 from graph import Graph, Zone
 
-# NEW: 合法 zone 类型集合
 VALID_ZONE_TYPES = {"normal", "blocked", "restricted", "priority"}
 
 
-# NEW: 统一报错（带行号）
 def parse_error(line_no: int, message: str) -> ValueError:
+    """Return the maximum number of drones allowed on a connection."""
     return ValueError(f"Line {line_no}: {message}")
 
 
-# NEW: 统一报错（带行号）
 def split_metadata(line: str, line_no: int) -> tuple[str, str | None]:
+    """
+    Split a line into its main statement and optional metadata block.
+
+    Returns:
+        A tuple of (main_part, metadata_part).
+        metadata_part is None if no [...] block exists.
+    """
     open_count = line.count("[")
     close_count = line.count("]")
 
-    # 没有 metadata
+    # no metadata
     if open_count == 0 and close_count == 0:
         return line.strip(), None
 
-    # 必须刚好一对
+    # must be 1 []
     if open_count != 1 or close_count != 1:
         raise parse_error(line_no, "meta must contain exactly one [...]block")
 
     open_index = line.index("[")
     close_index = line.index("]")
 
-    # 顺序必须正确
+    # [] sequence correct
     if close_index < open_index:
         raise parse_error(line_no, "invalid metadata order")
 
-    # NEW: metadata 后不能有额外内容
+    # after metadata no extra content
     after = line[close_index + 1:].strip()
     if after:
         raise parse_error(line_no,
@@ -37,24 +42,24 @@ def split_metadata(line: str, line_no: int) -> tuple[str, str | None]:
     main_part = line[:open_index].strip()
     meta_part = line[open_index: close_index + 1].strip()
 
-    # NEW: 必须有主体
+    # must have main part
     if not main_part:
         raise parse_error(line_no, "missing statement before metadata")
 
     return main_part, meta_part
 
 
-# # CHANGED: 增加 line_no + 严格检查 key=value
+# # 增加 line_no + 严格检查 key=value
 def parse_metadata(meta: str, line_no: int) -> dict[str, str]:
     """
-    把 metadata 字符串解析成字典
-    输入：
+    Parse a metadata blcok
+    Input:
     "[zone=restricted max_drones=2]"
-    输出：
+    Output:
     {"zone": "restricted", "max_drones": "2"}
     """
 
-    # 防御性检查（不是必须，但更安全）
+    # defensive double check
     if not (meta.startswith("[") and meta.endswith("]")):
         raise parse_error(line_no, "invalid metadata block")
 
@@ -64,8 +69,9 @@ def parse_metadata(meta: str, line_no: int) -> dict[str, str]:
     if not content:
         return result
 
+    # split based on space
     parts: list[str] = content.split()
-    # 按空格把字符串切开，变成列表。
+
     for part in parts:
         if "=" not in part:
             raise parse_error(line_no, f"invalid metadata entry: {part}")
@@ -79,26 +85,26 @@ def parse_metadata(meta: str, line_no: int) -> dict[str, str]:
     return result
 
 
-# NEW: zone 名合法性检查
 def validate_zone_name(name: str, line_no: int) -> None:  # why
+    """Validate a zone name."""
     if "-" in name or " " in name:
         raise parse_error(line_no, f"invalid zone name: {name}")
 
 
-# NEW: 正整数检查
 def parse_positive_int(value: str, field: str, line_no: int) -> int:  # field?
+    """Parse a strictly positive integer field."""
     try:
         number = int(value)
     except ValueError as exc:
-        raise parse_error(line_no, f"{field} must be an integer") from exc  # ?
+        raise parse_error(line_no, f"{field} must be an integer") from exc
 
     if number <= 0:
         raise parse_error(line_no, f"{field} must be a positive integer")
     return number
 
 
-# NEW: 坐标解析
 def parse_coordinate(value: str, field: str, line_no: int) -> int:
+    """Parse a coordinate as an integer."""
     try:
         return int(value)
     except ValueError as exc:
@@ -107,9 +113,10 @@ def parse_coordinate(value: str, field: str, line_no: int) -> int:
 
 def parse_file(filename: str) -> tuple[int, Graph]:
     """
-    Input: 整个地图文件
+    Parse a Fly_in map file.
 
-    Return: drone数量, 构建好的 graph
+    Returns:
+        A tuple of (nb_drones, graph).
     """
 
     graph = Graph()
@@ -129,7 +136,7 @@ def parse_file(filename: str) -> tuple[int, Graph]:
             if not line or line.startswith("#"):
                 continue
 
-            # CHANGED: nb_drones 严格检查
+            # drones check: nb_drones: 2
             if line.startswith("nb_drones:"):
                 if nb_drones is not None:  # why it can be not none?
                     raise parse_error(line_no,
@@ -142,7 +149,7 @@ def parse_file(filename: str) -> tuple[int, Graph]:
                                   "nb_drones must be defined "
                                   "before other entries")
 
-            # CHANGED: zone 解析升级
+            # zone check: start_hub: start 0 0
             if (
                 line.startswith("start_hub:")
                 or line.startswith("end_hub:")
@@ -162,13 +169,11 @@ def parse_file(filename: str) -> tuple[int, Graph]:
                 x = parse_coordinate(parts[2], "x", line_no)
                 y = parse_coordinate(parts[3], "y", line_no)
 
+                # zone metadata check: [zone=restricted]
                 zone_type = "normal"
                 max_drones = 1
-
-                # NEW: metadata 解析
                 if meta_part is not None:
                     metadata = parse_metadata(meta_part, line_no)
-                    # NEW: 限制 zone metadata key
                     for key in metadata:
                         if key not in {"zone", "max_drones"}:
                             raise parse_error(line_no,
@@ -191,7 +196,7 @@ def parse_file(filename: str) -> tuple[int, Graph]:
                 graph.add_zone(zone)
                 seen_names.add(name)
 
-                # NEW: start/end 唯一性检查
+                # start/end uniquity check
                 if prefix == "start_hub:":
                     if seen_start:
                         raise parse_error(line_no, "duplicate start_hub")
@@ -206,7 +211,7 @@ def parse_file(filename: str) -> tuple[int, Graph]:
 
                 continue
 
-            # CHANGED: connection 解析升级 connection: start-a
+            # connection check: connection: start-a
             if line.startswith("connection"):
                 main_part, meta_part = split_metadata(line, line_no)
                 parts = main_part.split()
@@ -229,7 +234,7 @@ def parse_file(filename: str) -> tuple[int, Graph]:
 
                 capacity = 1
 
-                # NEW: connection metadata
+                # connection metadata check
                 if meta_part is not None:
                     metadata = parse_metadata(meta_part, line_no)
 
@@ -248,10 +253,10 @@ def parse_file(filename: str) -> tuple[int, Graph]:
 
                 graph.add_connection(z1, z2, capacity)
                 continue
-            # NEW: 未知语句直接报错 whats the case for this?
+            #  unknown syntax: 未知语句直接报错 whats the case for this?
             raise parse_error(line_no, f"unknown statement: {line}")
 
-            # NEW: 最终检查
+            # final check
         if nb_drones is None:
             raise ValueError("Missing nb_drones definition")
         if not seen_start:

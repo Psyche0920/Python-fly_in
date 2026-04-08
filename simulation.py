@@ -3,13 +3,14 @@ from graph import Graph
 
 
 class Drone:
+    """Represents one drone moving through the graph."""
     def __init__(self, drone_id: int, start: str) -> None:
         self.id: int = drone_id
         self.pos: str = start
         self.path: list[str] = []
         self.delivered: bool = False
 
-        # restricted zone 用到的飞行状态
+        # Transit state for restricted zones.
         self.in_transit: bool = False
         self.transit_target: str | None = None
         self.transit_from: str | None = None
@@ -17,6 +18,14 @@ class Drone:
 
 
 def bfs(graph: Graph) -> list[str]:
+    """
+    Return one valid path from start to end using BFS.
+
+    Notes:
+        - Blocked zones are skipped.
+        - Neighbor order follows graph.adj order.
+    """
+
     if graph.start is None or graph.end is None:
         return []
 
@@ -24,10 +33,11 @@ def bfs(graph: Graph) -> list[str]:
     visited: set[str] = set()
 
     while queue:
-        node, path = queue.popleft()  # from queue out
+        node, path = queue.popleft()
+        # from queue out start, [] //a, [start]//a1, start+a//end, start+a+a1
 
         if node == graph.end:
-            return path + [node]
+            return path + [node]  # start+a+a1+end
 
         if node in visited:
             # if visited, continue to the next queue element avoid intertwining
@@ -39,31 +49,43 @@ def bfs(graph: Graph) -> list[str]:
             zone = graph.zones[nxt]
             if zone.zone_type != "blocked":
                 queue.append((nxt, path + [node]))
+                # a, start//a1, start+a//end, start+a+a1
     return []
 
 
 def zone_capacity(graph: Graph, zone_name: str) -> int:
+    """
+    Return the effective capacity of a zone.
+
+    Start and end are treated as practically unlimited
+    in this simplified model.
+    """
     if zone_name == graph.start or zone_name == graph.end:
-        return 10**9  # ???
+        return 10**9  # set unlimited
     return graph.zones[zone_name].max_drones
 
 
 def simulate(nb_drones: int, graph: Graph) -> list[str]:
     """
-    Input: nb_drones：无人机数量, graph：地图
-    Output: list[str]：每一回合的输出行
-    """
-    if graph.start is None:
+        Simulate drone movements turn by turn.
+
+        Notes:
+            - All drones initially share the same BFS path.
+            - Zone capacity and connection capacity are enforced.
+            - Restricted zones take two turns:
+            1) enter transit
+            2) arrive on the next turn(if transit)
+        """
+    if graph.start is None or graph.end is None:
         return []
 
-    # 一次性创建所有 drone 对象。
     drones: list[Drone] = [Drone(i + 1, graph.start) for i in range(nb_drones)]
-    # nb_drones input is zero?
 
     path: list[str] = bfs(graph)
     if not path:
-        return []  # BFS 可能找不到路
+        return []
 
+    # Remove the initial start zone so turn 1 does not print "start".
     for drone in drones:
         drone.path = path[1:]
 
@@ -71,33 +93,32 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
 
     while True:
         moves: list[str] = []
-        # finished: int = 0
-        # 当前各 zone 有多少 drone
+        arrived_this_turn: set[int] = set()
+
+        # How many drones in the current zones
         current_occupancy: dict[str, int] = {}
         for drone in drones:
-            if drone.delivered:  # ??? why jump if delivered? delivered=finished at the destination? why not count at the destination hub
+            if drone.delivered:
                 continue
-            if drone.in_transit:  # means not in any pos? so no counting?
+            if drone.in_transit:
                 continue
             current_occupancy[drone.pos] = current_occupancy.get(drone.pos,
                                                                  0) + 1
 
-        # 本回合预约进入 zone 的数量
+        # How many drones have already been approved to enter a zone this turn.
         incoming: dict[str, int] = {}
 
-        # 本回合使用 connection 的数量
-        link_usage: dict[frozenset[str], int] = {}  # ??? what is this
+        # How many drones have already used a connection this turn.
+        link_usage: dict[frozenset[str], int] = {}
 
         moved_this_turn = 0
-        # 这个变量专门用来防止死循环。
-        # 如果这一回合没有任何 drone 成功移动，那说明程序卡住了。
-        # 如果不 break，就可能一直 while 下去
+        # if no move, to break the while true deadlock
 
         # ----------------------------
-        # 阶段 1：先处理正在 transit 的 drone
+        #  Phase 1: finish transit for drones that were already flying.
         # ----------------------------
         for drone in drones:
-            if drone.delivered:  # 因为已经到终点的 drone 不应该继续参与调度。
+            if drone.delivered:
                 continue
 
             if not drone.in_transit:
@@ -107,16 +128,21 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
 
             if drone.remaining_turns == 0:
                 target = drone.transit_target
-                if target is None:  # what does this mean. already finish transit? why after reaiming_turns -=1
+                if target is None:  # defensive, should not normally
                     continue
 
-                # 到达 restricted zone
+                # arived restricted zone
                 drone.pos = target
                 drone.in_transit = False
                 drone.transit_target = None
                 drone.transit_from = None
 
+                # this turn target_zone has been reserved for how many drones
                 incoming[target] = incoming.get(target, 0) + 1
+                current_occupancy[target] = (
+                    current_occupancy.get(target, 0) + 1
+                )
+                arrived_this_turn.add(drone.id)
                 moves.append(f"D{drone.id}-{target}")
                 moved_this_turn += 1
 
@@ -124,21 +150,20 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
                     drone.delivered = True
 
         # ----------------------------
-        # 阶段 2：处理普通可行动 drone
+        # Phase 2: process normal drones that can act this turn.
         # ----------------------------
         for drone in drones:
             if drone.delivered:
                 continue
+
             if drone.in_transit:
                 continue
-            if not drone.path:
-                if drones.pos == graph.end:
-                    drone.delivered = True
+
+            # A drone (just landed/transited) this turn cannot move again imme.
+            if drone.id in arrived_this_turn:
                 continue
-            next_zone: str = drone.path[0]
 
             if not drone.path:
-                # 已经到终点路径为空
                 if drone.pos == graph.end:
                     drone.delivered = True
                 continue
@@ -146,18 +171,18 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
             next_zone: str = drone.path[0]
             next_zone_obj = graph.zones[next_zone]
 
-            # blocked zone 不能进
+            # blocked zone cannot be entered
             if next_zone_obj.zone_type == "blocked":
                 continue
 
-            # 检查 connection capacity
+            # check connection capacity
             link_key = frozenset({drone.pos, next_zone})
             used = link_usage.get(link_key, 0)
             capacity = graph.get_link_capacity(drone.pos, next_zone)
             if used >= capacity:
-                continue  # means wait until next round? but why >?
+                continue  # defensive
 
-            # 检查目标 zone 容量
+            # check zone capacity
             cap = zone_capacity(graph, next_zone)
             now_inside = current_occupancy.get(next_zone, 0)
             already_reserved = incoming.get(next_zone, 0)
@@ -165,11 +190,11 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
             if now_inside + already_reserved >= cap:
                 continue
 
-            # # restricted: 进入需要两回合
+            # restricted: need to hold for two turns
             if next_zone_obj.zone_type == "restricted":
                 drone.path.pop(0)
 
-                # 离开当前 zone
+                # left the current zone
                 current_occupancy[drone.pos] -= 1
 
                 drone.in_transit = True
@@ -182,6 +207,7 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
                 moved_this_turn += 1
                 continue
 
+            # normal / priority: this turn enter directly
             drone.path.pop(0)
             current_occupancy[drone.pos] -= 1
             drone.pos = next_zone
@@ -208,88 +234,54 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
 
     return results
 
-# v2:“改动清单”
-# graph.py
 
-# 新增：
+# [v3 change-list]
+# [1. 给 Drone 加了 4 个字段]
+# self.in_transit: bool = False
+# self.transit_target: str | None = None
+# self.transit_from: str | None = None
+# self.remaining_turns: int = 0
+# [作用：]
+# in_transit：这架 drone 现在是不是在飞行中
+# transit_target：飞向哪个 restricted zone
+# transit_from：从哪里起飞
+# remaining_turns：还要几回合才能落地
 
-# self.links
-
-# add_connection(..., capacity=1)
-
-# 重复 connection 检查
-
-# get_link_capacity()
-
-# parser.py
-
-# 修改：
-
-# connection 段读取 max_link_capacity
-
-# simulation.py
-
-# 新增：
-
-# delivered
-
-# zone_capacity()
-
-# current_occupancy
-
-# incoming
-
-# link_usage
-
-# moved_this_turn
-
-# zone / edge capacity 检查
-
-# waiting 逻辑
+# 2. 把每回合拆成两阶段
+# [阶段 1]
+# 先处理“上一回合已经进入 restricted 通道”的 drone。
+# 它们这回合会：
+# remaining_turns -= 1
+# 如果变成 0，就正式到达目标 zone
+# 输出：
+# D1-r1
+# [阶段 2]
+# 再处理普通 drone：
+# normal / priority：直接进入
+# restricted：不直接落地，而是进入 transit 状态，输出 connection 形式
+# [例如：]
+# D1-start-r1
+# 下一回合才会输出：
+# D1-r1
 
 
-# [Questions]
-# 1.
+# Q1: restricted = drone 在 connection 上“飞 2 回合”，期间一直占用这条边
+# towards restricted zone： two turns
+# 回合 1
+# 进入 transit
+# remaining_turns = 1
+# 输出连接
+# 回合 2
+# remaining_turns -= 1
+# 变成 0
+# 正式到达 restricted zone
+# 输出 zone 名
 
-# current_occupancy.get(..., 0) + 1 不是永远 1，而是在原有数量上加 1。
+# Q2: BFS 的“先后顺序”来源于：
+# parser.py 读取 connection 的顺序
+# graph.add_connection() 往 adj 列表里 append 的顺序
+# BFS 按这个顺序遍历邻居
 
-# 2.
-
-# continue = 跳过这次，去下一个
-# break = 整个循环结束
-# exit/quit = 程序结束
-
-# 3.
-
-# if now_inside + already_reserved >= cap: continue
-# 表示目标 zone 满了，这个 drone 这回合不能进去，只能等。
-# 即使里面的人会走，你现在这个简化写法也还是先保守检查
-# a. now_inside+already reserved
-# 你现在这套逻辑是比较保守的规则层：
-# 先看当前占用
-# 再看本轮已预约进入
-# 满了就不让进
-# 这能保证不会超容量。
-# b. continue:
-# 结束它在这一轮的处理，马上去处理下一个 drone。
-# 等 for drone in drones 全部跑完，这一轮就结束了。
-# 然后外层 while True 开始下一轮，这个 drone 才会再次被处理。
-# 所以不是“永远不处理了”，而是：
-# 这一轮不动，下一轮再试
-
-# 4.
-# if drone.pos == graph.end and not drone.path
-# 表示“已经到终点，而且后面没有剩余路径”，才算真正送达。
-# 对于你当前阶段：
-# 只写 if drone.pos == graph.end: 也能跑
-# 忘了 pop，短期内也可能看不出坏结果
-# 但是：
-# 这属于“被掩盖的 bug”
-# 以后一旦你依赖 path，就会出问题
-# 所以最好保持状态一致
-
-
-# 5.
-# 会卡死是因为 while True 还在跑，但没有任何 drone 能移动，状态永远不变。
-# BFS 一般会尽量避开 blocked zone。原始 bfs 里已经有 blocked 检查。
-# 但如果别的逻辑有问题，或者路径根本无效，drone 可能永远过不去。
+# Q3: incoming[target] = incoming.get(target, 0) + 1 到底是什么意思？
+# incoming 表示：
+# 本回合已经被安排进入这个 zone 的 drone 数量

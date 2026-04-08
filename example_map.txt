@@ -1,5 +1,3 @@
-# example_map.txt
-
 nb_drones: 2
 
 start_hub: start 0 0

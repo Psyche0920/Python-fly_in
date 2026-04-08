@@ -1,4 +1,9 @@
+"""Graph data structures for the Fly_in project."""
+
+
 class Zone:
+    """A zone (node) in the drone network."""
+
     def __init__(self, name, x, y, zone_type="normal", max_drones=1) -> None:
         self.name: str = name
         self.x: int = x
@@ -6,37 +11,43 @@ class Zone:
         self.zone_type: str = zone_type
         self.max_drones: int = max_drones
 
-    def cost(self) -> float:  # not int or float?
+    def cost(self) -> float:
+        """Return the movement cost to enter this zone."""
         if self.zone_type == "restricted":
-            return 2
+            return 2.0
         if self.zone_type == "blocked":
-            return float("inf")  # ???
-        return 1
+            return float("inf")  # unlimited big
+        return 1.0
 
 
 class Connection:
-    def __init__(self, z1, z2, capacity=1) -> None:
+    """An undirected connection between two zones."""
+
+    def __init__(self, z1: str, z2: str, capacity: int = 1) -> None:
         self.z1: str = z1
         self.z2: str = z2
         self.capacity: int = capacity
 
 
 class Graph:
+    """Graph storing zones, adjacency lists, and connection capacities."""
+
     def __init__(self) -> None:
         self.zones: dict[str, Zone] = {}
         self.adj: dict[str, list[str]] = {}
         self.start: str | None = None
         self.end: str | None = None
         self.links: dict[frozenset[str], int] = {}
-        # ✅ 新增：保存每条 connection 的容量
-        # key 用 frozenset({"a", "b"})，因为 a-b 和 b-a 是同一条无向边
+        # key=frozenset({"a", "b"}) => a-b = b-a
 
     def add_zone(self, zone: Zone) -> None:
+        """Add a zone to the graph."""
         self.zones[zone.name] = zone
         self.adj[zone.name] = []
 
     def add_connection(self, name1: str, name2: str,
                        capacity: int = 1) -> None:
+        """Add an undirected??? connection between two existing zones."""
         if name1 not in self.adj:
             raise ValueError(f"Unknown zone in connection: {name1}")
         if name2 not in self.adj:
@@ -51,6 +62,7 @@ class Graph:
         self.links[key] = capacity
 
     def get_link_capacity(self, name1: str, name2: str) -> int:
+        """Return the maximum number of drones allowed on a connection."""
         return self.links[frozenset({name1, name2})]
 
 
@@ -92,3 +104,15 @@ class Graph:
 # graph.zones["a"].max_drones 管的是 点（zone）
 
 # graph.links[...] 管的是 边（connection）
+
+# float("inf") 用在 Zone.cost() 里，是“无穷大”的意思。
+# 它表示 blocked zone 的进入代价大到不可选，所以返回类型写 float 更合适。2 和 1 也会自动兼容成 float。
+# 为什么要“无限大”？
+# 因为这是一个通用设计（为最短路径算法准备）：
+# normal → cost = 1
+# restricted → cost = 2
+# blocked → cost = ∞（永远不选）
+# 👉 这样如果以后你用：
+# Dijkstra
+# A*
+# 就可以自然跳过 blocked。

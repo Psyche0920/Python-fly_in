@@ -1,3 +1,5 @@
+"""Program entry point for Fly_in."""
+
 import sys
 from parser import parse_file
 from simulation import simulate
@@ -5,6 +7,7 @@ from formatter import print_result
 
 
 def main() -> None:
+    """Program entry point for Fly_in."""
     if len(sys.argv) != 2:
         print("Usage: python3 main.py map.txt")
         return
