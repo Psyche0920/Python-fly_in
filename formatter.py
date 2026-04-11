@@ -18,7 +18,13 @@ RESET = "\033[0m"
 
 
 def colorize(token: str, graph: Graph) -> str:
-    """Color one movement token according to its destination zone color"""
+    """
+    Color one movement token according to its destination zone color.
+
+    Examples:
+        D1-a
+        D2-start-r1
+    """
 
     parts = token.split("-")
     if len(parts) < 2:
