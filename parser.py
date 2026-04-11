@@ -85,7 +85,7 @@ def parse_metadata(meta: str, line_no: int) -> dict[str, str]:
     return result
 
 
-def validate_zone_name(name: str, line_no: int) -> None:  # why
+def validate_zone_name(name: str, line_no: int) -> None:  # connection 用 "-" 分割
     """Validate a zone name."""
     if "-" in name or " " in name:
         raise parse_error(line_no, f"invalid zone name: {name}")
@@ -120,7 +120,7 @@ def parse_file(filename: str) -> tuple[int, Graph]:
     """
 
     graph = Graph()
-    nb_drones: int | None = None
+    nb_drones: int | None = None  # 初始状态（还没解析）
 
     seen_names: set[str] = set()
     seen_start = False
@@ -133,15 +133,16 @@ def parse_file(filename: str) -> tuple[int, Graph]:
             # 默认索引从 0 开始，但可以通过 start 参数指定起始值。
             line = raw_line.strip()
 
+            # jump over empty line & notes
             if not line or line.startswith("#"):
                 continue
 
             # drones check: nb_drones: 2
             if line.startswith("nb_drones:"):
-                if nb_drones is not None:  # why it can be not none?
+                if nb_drones is not None:  # it must be none at the beginning
                     raise parse_error(line_no,
                                       "duplicate nb_drones definition")
-                value = line.split(":", 1)[1].strip()
+                value = line.split(":", 1)[1].strip()  # slice only once
                 nb_drones = parse_positive_int(value, "nb_drones", line_no)
                 continue
             if nb_drones is None:
@@ -149,6 +150,67 @@ def parse_file(filename: str) -> tuple[int, Graph]:
                                   "nb_drones must be defined "
                                   "before other entries")
 
+            # zone check: start_hub: start 0 0
+            if (
+                line.startswith("start_hub:")
+                or line.startswith("end_hub:")
+                or line.startswith("hub:")
+            ):
+                main_part, meta_part = split_metadata(line, line_no)
+                parts = main_part.split()
+                if len(parts) != 4:
+                    raise parse_error(line_no, "invalid zone definition")
+                prefix = parts[0]
+                name = parts[1]
+
+                validate_zone_name(name, line_no)
+
+                if name in seen_names:
+                    raise parse_error(line_no, f"duplicate zone name: {name}")
+                x = parse_coordinate(parts[2], "x", line_no)
+                y = parse_coordinate(parts[3], "y", line_no)
+
+                # zone metadata check: [zone=restricted]
+                zone_type = "normal"
+                max_drones = 1
+                if meta_part is not None:
+                    metadata = parse_metadata(meta_part, line_no)
+                    for key in metadata:
+                        if key not in {"zone", "max_drones"}:
+                            raise parse_error(line_no,
+                                              f"invalid metadata"
+                                              f"key for zone: {key}")
+
+                    if "zone" in metadata:
+                        zone_type = metadata["zone"]
+                        if zone_type not in VALID_ZONE_TYPES:
+                            raise parse_error(line_no,
+                                              f"invalid zone"
+                                              f"type: {zone_type}")
+
+                    if "max_drones" in metadata:
+                        max_drones = parse_positive_int(
+                            metadata["max_drones"], "max_drones", line_no
+                        )
+
+                zone = Zone(name, x, y, zone_type, max_drones)
+                graph.add_zone(zone)
+                seen_names.add(name)
+
+                # start/end uniquity check
+                if prefix == "start_hub:":
+                    if seen_start:
+                        raise parse_error(line_no, "duplicate start_hub")
+                    graph.start = name
+                    seen_start = True
+
+                elif prefix == "end_hub:":
+                    if seen_end:
+                        raise parse_error(line_no, "duplicate end_hub")
+                    graph.end = name
+                    seen_end = True
+
+                continue
             # zone check: start_hub: start 0 0
             if (
                 line.startswith("start_hub:")
@@ -238,7 +300,7 @@ def parse_file(filename: str) -> tuple[int, Graph]:
                 if meta_part is not None:
                     metadata = parse_metadata(meta_part, line_no)
 
-                    for key in metadata:
+                    for key in metadata:  # keep the same structure as Zone
                         if key != "max_link_capacity":
                             raise parse_error(
                                 line_no, f"invalid metadata"
@@ -253,11 +315,12 @@ def parse_file(filename: str) -> tuple[int, Graph]:
 
                 graph.add_connection(z1, z2, capacity)
                 continue
-            #  unknown syntax: 未知语句直接报错 whats the case for this?
+            #  unknown syntax: other unmeaningful cases e.g. room 1-2-3
+            # 这一行已经检查完所有合法语法了，还是不匹配，那就报错
             raise parse_error(line_no, f"unknown statement: {line}")
 
             # final check
-        if nb_drones is None:
+        if nb_drones is None:  # defensive, the whole text is empty
             raise ValueError("Missing nb_drones definition")
         if not seen_start:
             raise ValueError("Missing start_hub definition")

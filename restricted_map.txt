@@ -4,5 +4,5 @@ start_hub: start 0 0
 hub: r1 1 0 [zone=restricted max_drones=2]
 end_hub: end 2 0
 
-connection: start-r1 [max_link_capacity=2]
+connection: start-r1 [max_link_capacity=1]
 connection: r1-end [max_link_capacity=2]

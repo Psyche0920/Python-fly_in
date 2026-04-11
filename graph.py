@@ -38,7 +38,10 @@ class Graph:
         self.start: str | None = None
         self.end: str | None = None
         self.links: dict[frozenset[str], int] = {}
-        # key=frozenset({"a", "b"}) => a-b = b-a
+        # frozenset({"a", "b"}) == frozenset({"b", "a"})
+        # frozenset: 不可修改的集合（immutable set）
+        # e.g. connection: start-a [max_link_capacity=2]
+        # self.links[frozenset({"start", "a"})] = 2
 
     def add_zone(self, zone: Zone) -> None:
         """Add a zone to the graph."""

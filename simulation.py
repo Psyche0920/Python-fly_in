@@ -95,7 +95,7 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
         moves: list[str] = []
         arrived_this_turn: set[int] = set()
 
-        # How many drones in the current zones
+        # How many drones in the current zones- Real Time
         current_occupancy: dict[str, int] = {}
         for drone in drones:
             if drone.delivered:
@@ -105,14 +105,11 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
             current_occupancy[drone.pos] = current_occupancy.get(drone.pos,
                                                                  0) + 1
 
-        # How many drones have already been approved to enter a zone this turn.
-        incoming: dict[str, int] = {}
-
         # How many drones have already used a connection this turn.
         link_usage: dict[frozenset[str], int] = {}
 
-        moved_this_turn = 0
         # if no move, to break the while true deadlock
+        moved_this_turn = 0
 
         # ----------------------------
         #  Phase 1: finish transit for drones that were already flying.
@@ -131,14 +128,13 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
                 if target is None:  # defensive, should not normally
                     continue
 
-                # arived restricted zone
+                # arrived restricted zone
                 drone.pos = target
                 drone.in_transit = False
                 drone.transit_target = None
                 drone.transit_from = None
 
-                # this turn target_zone has been reserved for how many drones
-                incoming[target] = incoming.get(target, 0) + 1
+                # CHANGED: drone has alre arved, so update real occupancy only
                 current_occupancy[target] = (
                     current_occupancy.get(target, 0) + 1
                 )
@@ -185,20 +181,20 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
             # check zone capacity
             cap = zone_capacity(graph, next_zone)
             now_inside = current_occupancy.get(next_zone, 0)
-            already_reserved = incoming.get(next_zone, 0)
-
-            if now_inside + already_reserved >= cap:
+            if now_inside >= cap:
                 continue
 
             # restricted: need to hold for two turns
             if next_zone_obj.zone_type == "restricted":
+                old_pos = drone.pos
                 drone.path.pop(0)
 
-                # left the current zone
-                current_occupancy[drone.pos] -= 1
+                # left old zone
+                current_occupancy[old_pos] -= 1
 
+                # enter transit mode
                 drone.in_transit = True
-                drone.transit_from = drone.pos
+                drone.transit_from = old_pos
                 drone.transit_target = next_zone
                 drone.remaining_turns = 1
 
@@ -208,13 +204,17 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
                 continue
 
             # normal / priority: this turn enter directly
+            old_pos = drone.pos
             drone.path.pop(0)
-            current_occupancy[drone.pos] -= 1
+            # left old zone
+            current_occupancy[old_pos] -= 1
+
+            # enter new zone
             drone.pos = next_zone
-
-            incoming[next_zone] = incoming.get(next_zone, 0) + 1
+            current_occupancy[next_zone] = (
+                current_occupancy.get(next_zone, 0) + 1
+            )
             link_usage[link_key] = used + 1
-
             moves.append(f"D{drone.id}-{next_zone}")
             moved_this_turn += 1
 
@@ -224,16 +224,38 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
         if moves:
             results.append(" ".join(moves))
 
-        # 全部送达
+        # all arrived
         if all(drone.delivered for drone in drones):
             break
 
-        # 没人能动，避免死循环
+        # no move deadlock-break
         if moved_this_turn == 0:
             break
 
     return results
 
+
+# [v4]
+# Problem: 当前代码的状态其实是不对称的
+# a. restricted 落地时, occupancy +1, incoming +1
+# b. normal 直接进入时, occupancy 不加incoming +1
+
+# 这就导致：
+
+# restricted 落地更容易“双算”
+# normal 进入更依赖 incoming 来挡住同回合冲突
+
+# 所以整体建模有点不统一。
+# solution1: occupany or incoming, choose one
+#
+# 方法 1：实时状态法
+# current_occupancy 实时更新
+# 不需要 incoming
+# 方法 2：预约表法
+# current_occupancy 只表示回合开始快照
+# 本回合新增进入全记到 incoming
+
+# 两种都能成立，但不能混着用。
 
 # [v3 change-list]
 # [1. 给 Drone 加了 4 个字段]
@@ -285,3 +307,6 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
 # Q3: incoming[target] = incoming.get(target, 0) + 1 到底是什么意思？
 # incoming 表示：
 # 本回合已经被安排进入这个 zone 的 drone 数量
+
+
+
