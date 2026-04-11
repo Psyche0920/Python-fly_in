@@ -124,22 +124,22 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
             drone.remaining_turns -= 1
 
             if drone.remaining_turns == 0:
-                target = drone.transit_target
-                if target is None:  # defensive, should not normally
+                target_zone = drone.transit_target
+                if target_zone is None:  # defensive, should not normally
                     continue
 
                 # arrived restricted zone
-                drone.pos = target
+                drone.pos = target_zone
                 drone.in_transit = False
                 drone.transit_target = None
                 drone.transit_from = None
 
                 # CHANGED: drone has alre arved, so update real occupancy only
-                current_occupancy[target] = (
-                    current_occupancy.get(target, 0) + 1
+                current_occupancy[target_zone] = (
+                    current_occupancy.get(target_zone, 0) + 1
                 )
                 arrived_this_turn.add(drone.id)
-                moves.append(f"D{drone.id}-{target}")
+                moves.append(f"D{drone.id}-{target_zone}")
                 moved_this_turn += 1
 
                 if drone.pos == graph.end and not drone.path:
@@ -164,23 +164,23 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
                     drone.delivered = True
                 continue
 
-            next_zone: str = drone.path[0]
-            next_zone_obj = graph.zones[next_zone]
+            target_zone: str = drone.path[0]
+            next_zone_obj = graph.zones[target_zone]
 
             # blocked zone cannot be entered
             if next_zone_obj.zone_type == "blocked":
                 continue
 
             # check connection capacity
-            link_key = frozenset({drone.pos, next_zone})
+            link_key = frozenset({drone.pos, target_zone})
             used = link_usage.get(link_key, 0)
-            capacity = graph.get_link_capacity(drone.pos, next_zone)
+            capacity = graph.get_link_capacity(drone.pos, target_zone)
             if used >= capacity:
                 continue  # defensive
 
             # check zone capacity
-            cap = zone_capacity(graph, next_zone)
-            now_inside = current_occupancy.get(next_zone, 0)
+            cap = zone_capacity(graph, target_zone)
+            now_inside = current_occupancy.get(target_zone, 0)
             if now_inside >= cap:
                 continue
 
@@ -195,11 +195,11 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
                 # enter transit mode
                 drone.in_transit = True
                 drone.transit_from = old_pos
-                drone.transit_target = next_zone
+                drone.transit_target = target_zone
                 drone.remaining_turns = 1
 
                 link_usage[link_key] = used + 1
-                moves.append(f"D{drone.id}-{drone.pos}-{next_zone}")
+                moves.append(f"D{drone.id}-{drone.pos}-{target_zone}")
                 moved_this_turn += 1
                 continue
 
@@ -209,13 +209,13 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
             # left old zone
             current_occupancy[old_pos] -= 1
 
-            # enter new zone
-            drone.pos = next_zone
-            current_occupancy[next_zone] = (
-                current_occupancy.get(next_zone, 0) + 1
+            # enter target zone
+            drone.pos = target_zone
+            current_occupancy[target_zone] = (
+                current_occupancy.get(target_zone, 0) + 1
             )
             link_usage[link_key] = used + 1
-            moves.append(f"D{drone.id}-{next_zone}")
+            moves.append(f"D{drone.id}-{target_zone}")
             moved_this_turn += 1
 
             if drone.pos == graph.end and not drone.path:
@@ -307,6 +307,3 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
 # Q3: incoming[target] = incoming.get(target, 0) + 1 到底是什么意思？
 # incoming 表示：
 # 本回合已经被安排进入这个 zone 的 drone 数量
-
-
-

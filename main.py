@@ -13,9 +13,20 @@ def main() -> None:
         return
 
     filename: str = sys.argv[1]
-    nb_drones, graph = parse_file(filename)
-    result: list[str] = simulate(nb_drones, graph)
-    print_result(result)
+
+    try:
+        nb_drones, graph = parse_file(filename)
+        result: list[str] = simulate(nb_drones, graph)
+
+        #  clearer message for disconnected / unsolved maps
+        if not result:
+            print("No valid path from start to end.")
+
+        # formatter now needs graph for colors
+        print_result(result, graph)
+
+    except ValueError as exc:
+        print(f"Error: {exc}")
 
 
 if __name__ == "__main__":

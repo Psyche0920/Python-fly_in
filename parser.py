@@ -49,7 +49,6 @@ def split_metadata(line: str, line_no: int) -> tuple[str, str | None]:
     return main_part, meta_part
 
 
-# # 增加 line_no + 严格检查 key=value
 def parse_metadata(meta: str, line_no: int) -> dict[str, str]:
     """
     Parse a metadata blcok
@@ -76,7 +75,7 @@ def parse_metadata(meta: str, line_no: int) -> dict[str, str]:
         if "=" not in part:
             raise parse_error(line_no, f"invalid metadata entry: {part}")
 
-        k, v = part.split("=")
+        k, v = part.split("=", 1)
         if not k or not v:
             raise parse_error(line_no, f"invalid metadata entry: {part}")
         if k in result:
@@ -173,10 +172,12 @@ def parse_file(filename: str) -> tuple[int, Graph]:
                 # zone metadata check: [zone=restricted]
                 zone_type = "normal"
                 max_drones = 1
+                color = None
+
                 if meta_part is not None:
                     metadata = parse_metadata(meta_part, line_no)
                     for key in metadata:
-                        if key not in {"zone", "max_drones"}:
+                        if key not in {"zone", "max_drones", "color"}:
                             raise parse_error(line_no,
                                               f"invalid metadata"
                                               f"key for zone: {key}")
@@ -193,68 +194,10 @@ def parse_file(filename: str) -> tuple[int, Graph]:
                             metadata["max_drones"], "max_drones", line_no
                         )
 
-                zone = Zone(name, x, y, zone_type, max_drones)
-                graph.add_zone(zone)
-                seen_names.add(name)
+                    if "color" in metadata:
+                        color = metadata["color"]
 
-                # start/end uniquity check
-                if prefix == "start_hub:":
-                    if seen_start:
-                        raise parse_error(line_no, "duplicate start_hub")
-                    graph.start = name
-                    seen_start = True
-
-                elif prefix == "end_hub:":
-                    if seen_end:
-                        raise parse_error(line_no, "duplicate end_hub")
-                    graph.end = name
-                    seen_end = True
-
-                continue
-            # zone check: start_hub: start 0 0
-            if (
-                line.startswith("start_hub:")
-                or line.startswith("end_hub:")
-                or line.startswith("hub:")
-            ):
-                main_part, meta_part = split_metadata(line, line_no)
-                parts = main_part.split()
-                if len(parts) != 4:
-                    raise parse_error(line_no, "invalid zone definition")
-                prefix = parts[0]
-                name = parts[1]
-
-                validate_zone_name(name, line_no)
-
-                if name in seen_names:
-                    raise parse_error(line_no, f"duplicate zone name: {name}")
-                x = parse_coordinate(parts[2], "x", line_no)
-                y = parse_coordinate(parts[3], "y", line_no)
-
-                # zone metadata check: [zone=restricted]
-                zone_type = "normal"
-                max_drones = 1
-                if meta_part is not None:
-                    metadata = parse_metadata(meta_part, line_no)
-                    for key in metadata:
-                        if key not in {"zone", "max_drones"}:
-                            raise parse_error(line_no,
-                                              f"invalid metadata"
-                                              f"key for zone: {key}")
-
-                    if "zone" in metadata:
-                        zone_type = metadata["zone"]
-                        if zone_type not in VALID_ZONE_TYPES:
-                            raise parse_error(line_no,
-                                              f"invalid zone"
-                                              f"type: {zone_type}")
-
-                    if "max_drones" in metadata:
-                        max_drones = parse_positive_int(
-                            metadata["max_drones"], "max_drones", line_no
-                        )
-
-                zone = Zone(name, x, y, zone_type, max_drones)
+                zone = Zone(name, x, y, zone_type, max_drones, color)
                 graph.add_zone(zone)
                 seen_names.add(name)
 
