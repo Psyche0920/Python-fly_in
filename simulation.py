@@ -34,29 +34,59 @@ def zone_priority_rank(graph: Graph, zone_name: str) -> int:
 # tie-break = 当两个选择一样好时，用一个规则决定选谁
 
 
-def dijkstra(graph: Graph) -> list[str]:
+def dijkstra_path(
+        gragh: Graph,
+        start_zone: str,
+        full_links: set[frozenset[str]] | None = None,
+        full_zones: set[str] | None = None
+) -> list[str]:
     """
-    Return the lowest-cost path from start to end.
+    Return the lowest-cost path from start_zone to graph.end.
+
+    This function is used in two situations:
+
+    1. Initial reachability check:
+       - start_zone is graph.start
+       - blocked_links and full_zones are empty
+       - used to verify that the graph has at least one valid path
+
+    2. Dynamic replanning during simulation:
+       - start_zone is a drone's current zone
+       - blocked_links contains links already full in this turn
+       - full_zones contains zones already full in this turn
+       - used to choose the best currently feasible next route
+
     Rules:
         - blocked zones are skipped
         - restricted zones cost 2
         - normal and priority zones cost 1
         - priority zones win ties
+
+        - blocked_links are skipped if provided
+        - full_zones are skipped if provided
     """
-    if graph.start is None or graph.end is None:
+
+    if gragh.end is None:
         return []
+
+    if start_zone == gragh.end:
+        return [start_zone]
+
+    if full_links is None:
+        full_links = set()
+
+    if full_zones is None:
+        full_zones = set()
 
     # priority queque: total cost, priority score, current zone, path
     heap: list[tuple[int, int, str, list[str]]] = []
-
-    # push start into heap
-    heapq.heappush(heap, (0, 0, graph.start, [graph.start]))
+    heapq.heappush(heap, (0, 0, start_zone, [start_zone]))
 
     # record the best-seen sate of each zone
     # key: zone name
     # value: (cost, priority_score)
     best_seen: dict[str, tuple[int, int]] = {
-        graph.start: (0, 0)
+        gragh.start: (0, 0)
     }
 
     # if heap not empty, continue searching
@@ -66,25 +96,35 @@ def dijkstra(graph: Graph) -> list[str]:
         # according to first minimum cost, second priority_score
         total_cost, priority_score, current_zone, path = heapq.heappop(heap)
 
-        # if already the end, return the path
-        # coz it's the best path under the current rule
-        if current_zone == graph.end:
+        if current_zone == gragh.end:
             return path
 
         recorded = best_seen.get(current_zone)
         if recorded is not None and (total_cost, priority_score) > recorded:
             continue
 
-        for neighbor in graph.adj[current_zone]:
-            zone = graph.zones[neighbor]
+        for neighbor in gragh.adj[current_zone]:
+            zone = gragh.zones[neighbor]
+
             if zone.zone_type == "blocked":
                 continue
-            new_cost = total_cost + zone_move_cost(graph, neighbor)
-            new_priority = priority_score + zone_priority_rank(graph, neighbor)
+
+            link_key = frozenset({current_zone, neighbor})
+
+            if link_key in full_links:
+                continue
+
+            if neighbor in full_zones:
+                continue
+
+            new_cost = total_cost + zone_move_cost(gragh, neighbor)
+            new_priority = priority_score + zone_priority_rank(gragh, neighbor)
             new_state = (new_cost, new_priority)
+
             previous_best = best_seen.get(neighbor)
             if previous_best is not None and new_state >= previous_best:
                 continue
+
             best_seen[neighbor] = new_state
             heapq.heappush(
                 heap,
@@ -111,7 +151,7 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
         Simulate drone movements turn by turn.
 
         Notes:
-            - All drones initially share the same Dijkstra path.
+            - Each drone replans from its current position when it acts.
             - Zone capacity and connection capacity are enforced.
             - Restricted zones take two turns:
             1) enter transit
@@ -122,13 +162,9 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
 
     drones: list[Drone] = [Drone(i + 1, graph.start) for i in range(nb_drones)]
 
-    path: list[str] = dijkstra(graph)
-    if not path:
+    initial_path: list[str] = dijkstra_path(graph, graph.start)
+    if not initial_path:
         return []
-
-    # Remove the initial start zone so turn 1 does not print "start".
-    for drone in drones:
-        drone.path = path[1:]
 
     results: list[str] = []
 
@@ -136,7 +172,7 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
         moves: list[str] = []
         arrived_this_turn: set[int] = set()
 
-        # How many drones in the current zones- Real Time
+        # Current real-time occupancy of zones
         current_occupancy: dict[str, int] = {}
         for drone in drones:
             if drone.delivered:
@@ -146,7 +182,7 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
             current_occupancy[drone.pos] = current_occupancy.get(drone.pos,
                                                                  0) + 1
 
-        # How many drones have already used a connection [this turn.
+        # [Current-turn] link usage
         link_usage: dict[frozenset[str], int] = {}
 
         # if no move, to break the while true deadlock
@@ -175,7 +211,7 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
                 drone.transit_target = None
                 drone.transit_from = None
 
-                # CHANGED: drone has alre arved, so update real occupancy only
+                # drone has alre arved, so update real occupancy only
                 current_occupancy[target_zone] = (
                     current_occupancy.get(target_zone, 0) + 1
                 )
@@ -183,7 +219,7 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
                 moves.append(f"D{drone.id}-{target_zone}")
                 moved_this_turn += 1
 
-                if drone.pos == graph.end and not drone.path:
+                if drone.pos == graph.end:
                     drone.delivered = True
 
         # ----------------------------
@@ -200,12 +236,43 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
             if drone.id in arrived_this_turn:
                 continue
 
-            if not drone.path:
-                if drone.pos == graph.end:
-                    drone.delivered = True
+            if drone.pos == graph.end:
+                drone.delivered = True
                 continue
 
-            target_zone = drone.path[0]
+            # Build current-turn full links.
+            full_links: set[frozenset[str]] = set()
+            for link_key, used in link_usage.items():
+                names = tuple(link_key)  # ???
+                if len(names) != 2:  # ???
+                    continue
+                a, b = names[0], names[1]
+                capacity = graph.get_link_capacity(a, b)
+                if used >= capacity:
+                    full_links.add(link_key)
+
+            # Build current-turn full zones
+            full_zones: set[str] = set()
+            for zone_name, count in current_occupancy.items():
+                if count >= zone_capacity(graph, zone_name):
+                    full_zones.add(zone_name)
+
+            # # Dynamic replanning:
+            # search from the drone's current zone while avoiding links/zones
+            # already full in this turn.
+            candidate_path = dijkstra_path(
+                graph,
+                drone.pos,
+                full_links,
+                full_zones
+            )
+
+            # No feasible move right now
+            if len(candidate_path) < 2:  # move must contain more than 1?
+                continue
+
+            # Take only the next step from the replanned path
+            target_zone = candidate_path[1]
             next_zone_obj = graph.zones[target_zone]
 
             # blocked zone cannot be entered
@@ -246,7 +313,6 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
 
             # normal / priority: this turn enter directly
             old_pos = drone.pos
-            drone.path.pop(0)
             # left old zone
             current_occupancy[old_pos] -= 1
 
@@ -259,7 +325,7 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
             moves.append(f"D{drone.id}-{target_zone}")
             moved_this_turn += 1
 
-            if drone.pos == graph.end and not drone.path:
+            if drone.pos == graph.end:
                 drone.delivered = True
 
         if moves:
