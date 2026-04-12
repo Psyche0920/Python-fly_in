@@ -1,4 +1,4 @@
-from collections import deque
+import heapq  # whats the use why use this, heap??? list???
 from graph import Graph
 
 
@@ -17,39 +17,80 @@ class Drone:
         self.remaining_turns: int = 0
 
 
-def bfs(graph: Graph) -> list[str]:
-    """
-    Return one valid path from start to end using BFS.
+def zone_move_cost(graph: Graph, zone_name: str) -> int:
+    """Return the cost to enter a zone."""
+    zone = graph.zones[zone_name]
+    if zone.zone_type == "restricted":
+        return 2
+    return 1
 
-    Notes:
-        - Blocked zones are skipped.
-        - Neighbor order follows graph.adj order.
-    """
 
+def zone_priority_rank(graph: Graph, zone_name: str) -> int:
+    """Return tie-break rank for a zone."""
+    zone = graph.zones[zone_name]
+    if zone.zone_type == "priority":
+        return 0
+    return 1
+# tie-break = 当两个选择一样好时，用一个规则决定选谁
+
+
+def dijkstra(graph: Graph) -> list[str]:
+    """
+    Return the lowest-cost path from start to end.
+    Rules:
+        - blocked zones are skipped
+        - restricted zones cost 2
+        - normal and priority zones cost 1
+        - priority zones win ties
+    """
     if graph.start is None or graph.end is None:
         return []
 
-    queue: deque[tuple[str, list[str]]] = deque([(graph.start, [])])
-    visited: set[str] = set()
+    # priority queque: total cost, priority score, current zone, path
+    heap: list[tuple[int, int, str, list[str]]] = []
 
-    while queue:
-        node, path = queue.popleft()
-        # from queue out start, [] //a, [start]//a1, start+a//end, start+a+a1
+    # push start into heap
+    heapq.heappush(heap, (0, 0, graph.start, [graph.start]))
 
-        if node == graph.end:
-            return path + [node]  # start+a+a1+end
+    # record the best-seen sate of each zone
+    # key: zone name
+    # value: (cost, priority_score)
+    best_seen: dict[str, tuple[int, int]] = {
+        graph.start: (0, 0)
+    }
 
-        if node in visited:
-            # if visited, continue to the next queue element avoid intertwining
+    # if heap not empty, continue searching
+    while heap:
+
+        # take out the best state
+        # according to first minimum cost, second priority_score
+        total_cost, priority_score, current_zone, path = heapq.heappop(heap)
+
+        # if already the end, return the path
+        # coz it's the best path under the current rule
+        if current_zone == graph.end:
+            return path
+
+        recorded = best_seen.get(current_zone)
+        if recorded is not None and (total_cost, priority_score) > recorded:
             continue
 
-        visited.add(node)
-
-        for nxt in graph.adj[node]:  # from adj to queue
-            zone = graph.zones[nxt]
-            if zone.zone_type != "blocked":
-                queue.append((nxt, path + [node]))
-                # a, start//a1, start+a//end, start+a+a1
+        for neighbor in graph.adj[current_zone]:
+            zone = graph.zones[neighbor]
+            if zone.zone_type == "blocked":
+                continue
+            new_cost = total_cost + zone_move_cost(graph, neighbor)
+            new_priority = priority_score + zone_priority_rank(graph, neighbor)
+            new_state = (new_cost, new_priority)
+            previous_best = best_seen.get(neighbor)
+            if previous_best is not None and new_state >= previous_best:
+                continue
+            best_seen[neighbor] = new_state
+            heapq.heappush(
+                heap,
+                (new_cost, new_priority, neighbor, path + [neighbor])
+            )
+    # if all paths tried, still cannot reach end
     return []
 
 
@@ -70,7 +111,7 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
         Simulate drone movements turn by turn.
 
         Notes:
-            - All drones initially share the same BFS path.
+            - All drones initially share the same Dijkstra path.
             - Zone capacity and connection capacity are enforced.
             - Restricted zones take two turns:
             1) enter transit
@@ -81,7 +122,7 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
 
     drones: list[Drone] = [Drone(i + 1, graph.start) for i in range(nb_drones)]
 
-    path: list[str] = bfs(graph)
+    path: list[str] = dijkstra(graph)
     if not path:
         return []
 
@@ -234,6 +275,42 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
 
     return results
 
+# [v5]
+# a. dijkstra
+# 这个函数使用 Dijkstra 算法在图中寻找从 start 到 end 的最低总代价路径。
+# 我用一个最小堆来维护候选状态，每个状态包含当前总代价、priority 的辅助分数、当前节点和整条路径。
+# 每次我都会先取出总代价最小的状态进行扩展。
+# 如果遇到 blocked zone，我会直接跳过。
+# 如果进入 restricted zone，路径代价会加 2；进入 normal 或 priority zone，代价加 1。
+# 当两条路径总代价一样时，我再用 priority score 作为第二比较标准，让经过 priority zone 的路径更优先。
+# best_seen 用来记录到每个节点目前看到的最佳状态，避免重复扩展更差的状态。
+# 当我第一次从堆里取出 end 时，就可以返回当前路径，因为它已经是当前规则下的最佳路径。
+# 最容易被问到的 4 个点
+# 1. 为什么 priority 是 0？
+# 不是说它 cost 是 0。
+# 而是说它在 tie-break 里更优。
+# movement cost 还是 1。
+# 这个要分清。
+
+# 2. 为什么 path + [neighbor] 不直接 append？
+# 因为 append 会修改原列表。
+# 这里需要每条候选路径都是独立副本，所以用 + 创建新列表更安全。
+
+# 3. 为什么要有 best_seen？
+# 为了避免同一个点反复用更差状态扩展，减少重复计算。
+
+# 4. 为什么 if current_zone == graph.end: return path 可以直接返回？
+# 因为堆保证当前弹出来的是按 (cost, priority_score) 排序最优的状态。
+# 所以第一次弹出终点时，这条路径就是当前规则下最佳的。
+
+# b. 导入 Python 自带的堆模块。
+
+# 这个模块提供的主要功能就是：
+
+# heappush
+# heappop
+
+# 让你把一个普通 list 当成 最小堆 min-heap 来用。
 
 # [v4]
 # Problem: 当前代码的状态其实是不对称的

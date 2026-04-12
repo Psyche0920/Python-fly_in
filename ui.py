@@ -96,8 +96,10 @@ class FlyUI:
         """Draw static graph: connections first, then zones."""
         for link in self.graph.links:
             a, b = list(link)
-            x1, y1 = self.to_canvas(self.graph.zones[a].x, self.graph.zones[a].y)
-            x2, y2 = self.to_canvas(self.graph.zones[b].x, self.graph.zones[b].y)
+            x1, y1 = self.to_canvas(self.graph.zones[a].x,
+                                    self.graph.zones[a].y)
+            x2, y2 = self.to_canvas(self.graph.zones[b].x,
+                                    self.graph.zones[b].y)
             self.canvas.create_line(x1, y1, x2, y2, width=2, fill="black")
 
         for name, zone in self.graph.zones.items():
@@ -157,7 +159,9 @@ class FlyUI:
 
         return state
 
-    def build_positions(self, state: dict[int, tuple]) -> dict[int, tuple[float, float]]:
+    def build_positions(
+            self, state: dict[int, tuple]
+            ) -> dict[int, tuple[float, float]]:
         """Convert logical state to drawable positions."""
         positions: dict[int, tuple[float, float]] = {}
         zone_count: dict[str, int] = {}
@@ -263,7 +267,8 @@ class FlyUI:
         if step < self.steps:
             self.root.after(
                 self.delay_ms,
-                lambda: self.animate_frame(start_pos, end_pos, step + 1, target_turn),
+                lambda: self.animate_frame(start_pos, end_pos, step + 1,
+                                           target_turn),
             )
         else:
             self.animating = False
