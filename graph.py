@@ -4,10 +4,15 @@
 class Zone:
     """A zone (node) in the drone network."""
 
-    def __init__(self, name, x, y,
-                 zone_type="normal",
-                 max_drones=1,
-                 color: str | None = None) -> None:
+    def __init__(
+        self,
+        name: str,
+        x: int,
+        y: int,
+        zone_type: str = "normal",
+        max_drones: int = 1,
+        color: str | None = None,
+    ) -> None:
         self.name: str = name
         self.x: int = x
         self.y: int = y

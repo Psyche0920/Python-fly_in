@@ -146,7 +146,7 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
             current_occupancy[drone.pos] = current_occupancy.get(drone.pos,
                                                                  0) + 1
 
-        # How many drones have already used a connection this turn.
+        # How many drones have already used a connection [this turn.
         link_usage: dict[frozenset[str], int] = {}
 
         # if no move, to break the while true deadlock
@@ -205,7 +205,7 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
                     drone.delivered = True
                 continue
 
-            target_zone: str = drone.path[0]
+            target_zone = drone.path[0]
             next_zone_obj = graph.zones[target_zone]
 
             # blocked zone cannot be entered
@@ -240,7 +240,7 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
                 drone.remaining_turns = 1
 
                 link_usage[link_key] = used + 1
-                moves.append(f"D{drone.id}-{drone.pos}-{target_zone}")
+                moves.append(f"D{drone.id}-{old_pos}-{target_zone}")
                 moved_this_turn += 1
                 continue
 

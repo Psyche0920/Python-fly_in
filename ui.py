@@ -1,5 +1,6 @@
 import tkinter as tk
 from graph import Graph
+from typing import Any
 
 
 class FlyUI:
@@ -73,22 +74,22 @@ class FlyUI:
         self.root.bind("<Q>", self.quit_ui)
         self.root.bind("<Escape>", self.quit_ui)
 
-    def next_turn(self, event=None) -> None:
+    def next_turn(self, event: Any = None) -> None:
         """Animate to next turn."""
         if not self.animating and self.turn < len(self.results):
             self.animate_to(self.turn + 1)
 
-    def prev_turn(self, event=None) -> None:
+    def prev_turn(self, event: Any = None) -> None:
         """Animate to previous turn."""
         if not self.animating and self.turn > 0:
             self.animate_to(self.turn - 1)
 
-    def restart(self, event=None) -> None:
+    def restart(self, event: Any = None) -> None:
         """Restart from turn 0."""
         if not self.animating:
             self.animate_to(0)
 
-    def quit_ui(self, event=None) -> None:
+    def quit_ui(self, event: Any = None) -> None:
         """Close the UI."""
         self.root.destroy()
 
@@ -96,10 +97,14 @@ class FlyUI:
         """Draw static graph: connections first, then zones."""
         for link in self.graph.links:
             a, b = list(link)
-            x1, y1 = self.to_canvas(self.graph.zones[a].x,
-                                    self.graph.zones[a].y)
-            x2, y2 = self.to_canvas(self.graph.zones[b].x,
-                                    self.graph.zones[b].y)
+            x1, y1 = self.to_canvas(
+                self.graph.zones[a].x,
+                self.graph.zones[a].y,
+            )
+            x2, y2 = self.to_canvas(
+                self.graph.zones[b].x,
+                self.graph.zones[b].y,
+            )
             self.canvas.create_line(x1, y1, x2, y2, width=2, fill="black")
 
         for name, zone in self.graph.zones.items():
@@ -125,7 +130,9 @@ class FlyUI:
                 font=("Arial", 10, "bold"),
             )
 
-    def parse_token(self, token: str):
+    def parse_token(
+        self, token: str
+    ) -> tuple[int, tuple[str, str] | tuple[str, str, str] | None]:
         """
         Parse one simulation token.
 
@@ -143,9 +150,11 @@ class FlyUI:
 
         return drone_id, None
 
-    def build_state(self, turn: int) -> dict[int, tuple]:
+    def build_state(
+        self, turn: int
+    ) -> dict[int, tuple[str, str] | tuple[str, str, str]]:
         """Build logical drone state after replaying turns [0, turn)."""
-        state: dict[int, tuple] = {}
+        state: dict[int, tuple[str, str] | tuple[str, str, str]] = {}
 
         if self.graph.start is not None:
             for drone_id in self.drone_ids:
@@ -160,8 +169,9 @@ class FlyUI:
         return state
 
     def build_positions(
-            self, state: dict[int, tuple]
-            ) -> dict[int, tuple[float, float]]:
+        self,
+        state: dict[int, tuple[str, str] | tuple[str, str, str]],
+    ) -> dict[int, tuple[float, float]]:
         """Convert logical state to drawable positions."""
         positions: dict[int, tuple[float, float]] = {}
         zone_count: dict[str, int] = {}
@@ -179,7 +189,7 @@ class FlyUI:
                 dy = (i // 3) * 12 + 30
                 positions[drone_id] = (x + dx, y + dy)
 
-            elif info[0] == "edge":
+            elif info[0] == "edge" and len(info) == 3:
                 a, b = info[1], info[2]
                 x1, y1 = self.zone_pos[a]
                 x2, y2 = self.zone_pos[b]
@@ -267,8 +277,12 @@ class FlyUI:
         if step < self.steps:
             self.root.after(
                 self.delay_ms,
-                lambda: self.animate_frame(start_pos, end_pos, step + 1,
-                                           target_turn),
+                lambda: self.animate_frame(
+                    start_pos,
+                    end_pos,
+                    step + 1,
+                    target_turn,
+                ),
             )
         else:
             self.animating = False
