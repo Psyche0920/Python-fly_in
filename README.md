@@ -164,48 +164,69 @@ D2-C
 
 # Algorithm and Implementation Strategy
 
-## Core Strategy: Hybrid Pathfinding (Initial Path + Dynamic Replanning)
+## Core Strategy: Dynamic Replanning with Dijkstra
 
-This project uses a hybrid strategy combining:
+This project uses a dynamic pathfinding strategy based on Dijkstra’s algorithm.
 
-- an initial shortest path (global baseline)
-- dynamic replanning (local optimization at each turn)
+Instead of computing a fixed global plan, each drone makes decisions at every turn
+based on the current state of the simulation.
 
-### Initial Path (Baseline)
 
-At the start of the simulation, a shortest path is computed from the start zone to the end zone using Dijkstra:
+## Initial Path (Baseline Validation)
 
-- this path serves as a baseline route
-- all drones are initially assigned this path
-- it provides a consistent direction and avoids chaotic early movement
+At the start of the simulation, a shortest path from the start zone to the end zone is computed.
 
-This improves:
+This ensures:
+- the graph is reachable
+- there exists at least one valid solution
 
-- stability in early turns
-- predictable drone flow
-- reduced unnecessary divergence
+---
 
-### Dynamic Replanning (Core Mechanism)
+## Dynamic Replanning (Main Mechanism)
 
-At each turn, every drone may recompute its path using Dijkstra from:
+At each turn, every drone recomputes its path using Dijkstra from:
 
 - the start zone (initial turn)
 - or its current position (subsequent turns)
 
-The pathfinding dynamically avoids:
+This allows drones to dynamically adapt to congestion and changing conditions.
 
-- full zones (zone capacity reached)
-- saturated connections (link capacity reached)
+---
 
-This allows drones to adapt to congestion in real time.
+## Capacity-Aware Pathfinding
 
-## Pathfinding Details
+The algorithm considers real-time constraints using:
 
-The system uses a modified Dijkstra algorithm because movement costs are not uniform:
+- `full_zones`: zones that are at capacity in the current turn
+- `full_links`: connections that are saturated in the current turn
 
-- normal / priority zones → cost = 1
-- restricted zones → cost = 2
-- blocked zones → inaccessible
+---
+
+### Important Design Choice
+
+These constraints are applied **only to the immediate next move**, not to the entire future path.
+
+This means:
+
+- A drone will not enter a full zone or saturated link **during the current turn**
+- However, future zones are still considered reachable, because they may become free in later turns
+
+This avoids overly conservative behavior and allows drones to:
+
+- wait naturally when blocked
+- continue progressing once capacity is freed
+- maintain flow through the graph
+
+## Movement Cost Model
+
+Dijkstra is adapted to handle different zone types:
+
+- normal → cost = 1
+- restricted → cost = 2 (two turns)
+- priority → cost = 1 (preferred)
+- blocked → ignored (not traversable)
+
+---
 
 ## Tie-breaking Strategy
 
@@ -225,13 +246,23 @@ This ensures:
 
 ## Simulation Model
 
-Each turn consists of two phases:
+# Turn-Based Simulation Model
 
-- Transit resolution
-	drones entering restricted zones complete movement
-- Movement phase
-	drones attempt to move one step along their path
-	path may be recomputed dynamically
+The simulation operates in discrete turns.
+
+At each turn:
+
+1. Drones in transit (restricted zones) complete their movement if needed
+2. Other drones attempt to move one step
+3. Capacity constraints are checked dynamically
+
+Important properties:
+
+- Drones moving out of a zone free capacity in the same turn
+- A zone that is full in one turn may become available in the next
+- All decisions are recalculated at every turn
+
+---
 
 ## Constraint Handling
 
@@ -253,18 +284,17 @@ This implementation focuses on:
 - correctness over global optimality
 - simplicity and clarity
 - deterministic behavior
-- efficient local decision-making
+- respecting all constraints strictly
 
 It does not compute a globally optimal schedule, but produces efficient and valid solutions that respect all constraints.
 
 ## Intuition
 
-The system can be seen as:
+The system behaves like a real traffic system:
 
-- the initial path acting as a main route
-- dynamic replanning acting as real-time traffic adaptation
-
-Drones follow the main route by default, but can adjust when congestion occurs.
+- drones move forward when possible
+- wait when temporarily blocked
+- re-evaluate decisions continuously
 
 # Visual Representation
 

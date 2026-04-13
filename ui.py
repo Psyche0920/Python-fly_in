@@ -1,289 +1,362 @@
 import tkinter as tk
-from graph import Graph
+from tkinter import ttk
 from typing import Any
+
+from graph import Graph
+
+State = tuple[str, ...]
+Pos = tuple[float, float]
 
 
 class FlyUI:
-    """Simple turn-based UI for Fly-in."""
+    """Compact, cleaner Tkinter UI for Fly-in."""
+
+    BG = "#0f172a"
+    PANEL = "#111827"
+    CARD = "#1f2937"
+    LINE = "#334155"
+    TEXT = "#e5e7eb"
+    MUTED = "#94a3b8"
+    DRONE = "#f8fafc"
+    DRONE_OUTLINE = "#0f172a"
+    START = "#22c55e"
+    END = "#f59e0b"
+    FALLBACK_ZONE = "#475569"
 
     def __init__(self, graph: Graph, results: list[str]) -> None:
         self.graph = graph
         self.results = results
         self.turn = 0
-        self.animating = False
-
-        self.scale = 150
-        self.offset = 100
-        self.zone_radius = 22
-        self.steps = 18
-        self.delay_ms = 30
-
-        self.zone_pos: dict[str, tuple[float, float]] = {}
-        self.drone_ids = self.collect_drone_ids()
-        self.current_pos: dict[int, tuple[float, float]] = {}
+        self.margin = 90
+        self.zone_radius = 24
+        self.zone_pos: dict[str, Pos] = {}
+        self.drone_ids = self._collect_drone_ids()
 
         self.root = tk.Tk()
-        self.root.title("Fly-in Simulation")
+        self.root.title("Fly-in")
+        self.root.configure(bg=self.BG)
+        self.root.geometry("1360x860")
+        self.root.minsize(980, 680)
 
-        self.canvas = tk.Canvas(self.root, width=900, height=650, bg="white")
-        self.canvas.pack()
-
-        self.info_label = tk.Label(
-            self.root,
-            text="→ / Space: next   ←: prev   R: restart   Q / Esc: quit",
-            font=("Arial", 12),
-        )
-        self.info_label.pack(pady=8)
-
-        self.turn_label = tk.Label(
-            self.root,
-            text="Turn 0",
-            font=("Arial", 14, "bold"),
-        )
-        self.turn_label.pack(pady=4)
-
-        self.bind_keys()
-        self.draw_graph()
-        self.draw_turn(0)
-
+        self._build_ui()
+        self._bind_keys()
+        self._redraw()
         self.root.mainloop()
 
-    def collect_drone_ids(self) -> list[int]:
-        """Collect all drone IDs from simulation results."""
-        ids: set[int] = set()
+    def _build_ui(self) -> None:
+        style = ttk.Style()
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
 
-        for line in self.results:
-            for token in line.split():
-                drone_id = int(token.split("-")[0][1:])
-                ids.add(drone_id)
+        style.configure("Root.TFrame", background=self.BG)
+        style.configure("Panel.TFrame", background=self.PANEL)
+        style.configure("Card.TFrame", background=self.CARD)
+        style.configure("Title.TLabel", background=self.PANEL,
+                        foreground=self.TEXT, font=("Arial", 18, "bold"))
+        style.configure("Body.TLabel", background=self.PANEL,
+                        foreground=self.MUTED, font=("Arial", 11))
+        style.configure("Card.TLabel", background=self.CARD,
+                        foreground=self.TEXT, font=("Arial", 11))
+        style.configure("Big.TLabel", background=self.CARD,
+                        foreground=self.TEXT, font=("Arial", 22, "bold"))
+        style.configure("TButton", font=("Arial", 11, "bold"))
 
-        return sorted(ids)
+        root = ttk.Frame(self.root, style="Root.TFrame", padding=14)
+        root.pack(fill="both", expand=True)
+        root.columnconfigure(0, weight=1)
+        root.columnconfigure(1, weight=0)
+        root.rowconfigure(0, weight=1)
 
-    def to_canvas(self, x: int, y: int) -> tuple[float, float]:
-        """Convert graph coordinates to canvas coordinates."""
-        return x * self.scale + self.offset, y * self.scale + self.offset
+        left = ttk.Frame(root, style="Panel.TFrame", padding=10)
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 14))
+        left.rowconfigure(1, weight=1)
+        left.columnconfigure(0, weight=1)
 
-    def bind_keys(self) -> None:
-        """Bind keyboard controls."""
+        ttk.Label(left, text="Fly-in visualizer",
+                  style="Title.TLabel").grid(row=0, column=0, sticky="w")
+
+        self.canvas = tk.Canvas(left, bg=self.BG, highlightthickness=0)
+        self.canvas.grid(row=1, column=0, sticky="nsew", pady=(12, 0))
+        self.canvas.bind("<Configure>", lambda _e: self._redraw())
+
+        right = ttk.Frame(root, style="Panel.TFrame", padding=12)
+        right.grid(row=0, column=1, sticky="ns")
+        right.columnconfigure(0, weight=1)
+
+        ttk.Label(right, text="Controls",
+                  style="Title.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Label(
+            right,
+            text="← prev   → next   Space next\nR restart   Esc quit",
+            style="Body.TLabel",
+            justify="left",
+        ).grid(row=1, column=0, sticky="w", pady=(2, 12))
+
+        card1 = ttk.Frame(right, style="Card.TFrame", padding=12)
+        card1.grid(row=2, column=0, sticky="ew", pady=(0, 10))
+        ttk.Label(card1, text="Turn", style="Card.TLabel").pack(anchor="w")
+        self.turn_value = ttk.Label(card1, text="0 / 0", style="Big.TLabel")
+        self.turn_value.pack(anchor="w", pady=(4, 6))
+        self.progress = ttk.Label(card1, text="No moves yet",
+                                  style="Card.TLabel", wraplength=260,
+                                  justify="left")
+        self.progress.pack(anchor="w")
+
+        card2 = ttk.Frame(right, style="Card.TFrame", padding=12)
+        card2.grid(row=3, column=0, sticky="ew", pady=(0, 10))
+        ttk.Label(card2, text="Summary", style="Card.TLabel").pack(anchor="w")
+        self.stats = ttk.Label(card2, text="",
+                               style="Card.TLabel", justify="left")
+        self.stats.pack(anchor="w", pady=(6, 0))
+
+        btns = ttk.Frame(right, style="Panel.TFrame")
+        btns.grid(row=4, column=0, sticky="ew", pady=(4, 10))
+        for i in range(3):
+            btns.columnconfigure(i, weight=1)
+        ttk.Button(
+            btns, text="Prev",
+            command=self.prev_turn).grid(row=0, column=0, sticky="ew",
+                                         padx=(0, 4))
+        ttk.Button(btns, text="Next",
+                   command=self.next_turn).grid(row=0, column=1,
+                                                sticky="ew", padx=4)
+        ttk.Button(btns, text="Restart",
+                   command=self.restart).grid(row=0, column=2,
+                                              sticky="ew", padx=(4, 0))
+
+        card3 = ttk.Frame(right, style="Card.TFrame", padding=12)
+        card3.grid(row=5, column=0, sticky="nsew")
+        ttk.Label(card3, text="Legend", style="Card.TLabel").pack(anchor="w")
+        legend = (
+            "• Large green ring: start\n"
+            "• Large amber ring: end\n"
+            "• Small white dots: drones\n"
+            "• Dot on edge: moving through restricted turn\n"
+            "• Zone color uses map metadata when valid"
+        )
+        ttk.Label(card3, text=legend, style="Card.TLabel",
+                  justify="left", wraplength=260).pack(anchor="w", pady=(6, 0))
+
+    def _bind_keys(self) -> None:
+        self.root.bind("<Left>", self.prev_turn)
         self.root.bind("<Right>", self.next_turn)
         self.root.bind("<space>", self.next_turn)
-        self.root.bind("<Left>", self.prev_turn)
         self.root.bind("<r>", self.restart)
         self.root.bind("<R>", self.restart)
+        self.root.bind("<Escape>", self.quit_ui)
         self.root.bind("<q>", self.quit_ui)
         self.root.bind("<Q>", self.quit_ui)
-        self.root.bind("<Escape>", self.quit_ui)
 
-    def next_turn(self, event: Any = None) -> None:
-        """Animate to next turn."""
-        if not self.animating and self.turn < len(self.results):
-            self.animate_to(self.turn + 1)
+    def _collect_drone_ids(self) -> list[int]:
+        ids: set[int] = set()
+        for line in self.results:
+            for token in line.split():
+                if token.startswith("D"):
+                    try:
+                        ids.add(int(token.split("-")[0][1:]))
+                    except ValueError:
+                        pass
+        return sorted(ids)
 
-    def prev_turn(self, event: Any = None) -> None:
-        """Animate to previous turn."""
-        if not self.animating and self.turn > 0:
-            self.animate_to(self.turn - 1)
+    def _safe_color(self, color: str | None, fallback: str) -> str:
+        if not color:
+            return fallback
+        try:
+            self.root.winfo_rgb(color)
+            return color
+        except tk.TclError:
+            return fallback
 
-    def restart(self, event: Any = None) -> None:
-        """Restart from turn 0."""
-        if not self.animating:
-            self.animate_to(0)
+    def _canvas_size(self) -> tuple[int, int]:
+        width = max(self.canvas.winfo_width(), 600)
+        height = max(self.canvas.winfo_height(), 500)
+        return width, height
 
-    def quit_ui(self, event: Any = None) -> None:
-        """Close the UI."""
-        self.root.destroy()
+    def _layout(self) -> None:
+        if not self.graph.zones:
+            self.zone_pos = {}
+            return
 
-    def draw_graph(self) -> None:
-        """Draw static graph: connections first, then zones."""
-        for link in self.graph.links:
-            a, b = list(link)
-            x1, y1 = self.to_canvas(
-                self.graph.zones[a].x,
-                self.graph.zones[a].y,
-            )
-            x2, y2 = self.to_canvas(
-                self.graph.zones[b].x,
-                self.graph.zones[b].y,
-            )
-            self.canvas.create_line(x1, y1, x2, y2, width=2, fill="black")
+        width, height = self._canvas_size()
+        xs = [zone.x for zone in self.graph.zones.values()]
+        ys = [zone.y for zone in self.graph.zones.values()]
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
+        span_x = max(1, max_x - min_x)
+        span_y = max(1, max_y - min_y)
+        scale = min((width - 2 * self.margin) / span_x,
+                    (height - 2 * self.margin) / span_y)
+        scale = max(28.0, min(scale, 160.0))
+
+        graph_w = span_x * scale
+        graph_h = span_y * scale
+        offset_x = (width - graph_w) / 2 - min_x * scale
+        offset_y = (height - graph_h) / 2 - min_y * scale
+
+        self.zone_pos = {
+            name: (zone.x * scale + offset_x, zone.y * scale + offset_y)
+            for name, zone in self.graph.zones.items()
+        }
+
+    def _parse_token(self, token: str) -> tuple[int, State | None]:
+        parts = token.split("-")
+        if not parts or not parts[0].startswith("D"):
+            return -1, None
+        try:
+            drone_id = int(parts[0][1:])
+        except ValueError:
+            return -1, None
+        if len(parts) == 2:
+            return drone_id, ("zone", parts[1])
+        if len(parts) == 3:
+            return drone_id, ("edge", parts[1], parts[2])
+        return drone_id, None
+
+    def _state_at(self, turn: int) -> dict[int, State]:
+        state: dict[int, State] = {}
+        if self.graph.start is not None:
+            for drone_id in self.drone_ids:
+                state[drone_id] = ("zone", self.graph.start)
+        for line in self.results[:turn]:
+            for token in line.split():
+                drone_id, value = self._parse_token(token)
+                if drone_id >= 0 and value is not None:
+                    state[drone_id] = value
+        return state
+
+    def _positions(self, state: dict[int, State]) -> dict[int, Pos]:
+        positions: dict[int, Pos] = {}
+        zone_slots: dict[str, int] = {}
+        edge_slots: dict[tuple[str, str], int] = {}
+
+        for drone_id, info in sorted(state.items()):
+            if info[0] == "zone":
+                name = info[1]
+                if name not in self.zone_pos:
+                    continue
+                x, y = self.zone_pos[name]
+                idx = zone_slots.get(name, 0)
+                zone_slots[name] = idx + 1
+                cols = 4
+                gap = 13
+                row, col = divmod(idx, cols)
+                dx = (col - (cols - 1) / 2) * gap
+                dy = 32 + row * gap
+                positions[drone_id] = (x + dx, y + dy)
+            else:
+                a, b = info[1], info[2]
+                if a not in self.zone_pos or b not in self.zone_pos:
+                    continue
+                x1, y1 = self.zone_pos[a]
+                x2, y2 = self.zone_pos[b]
+                first, second = sorted((a, b))
+                key: tuple[str, str] = (first, second)
+                idx = edge_slots.get(key, 0)
+                edge_slots[key] = idx + 1
+                mx = (x1 + x2) / 2
+                my = (y1 + y2) / 2
+                vx, vy = x2 - x1, y2 - y1
+                length = max((vx * vx + vy * vy) ** 0.5, 1.0)
+                px, py = -vy / length, vx / length
+                offset = (idx - 0.5) * 12
+                positions[drone_id] = (mx + px * offset, my + py * offset)
+        return positions
+
+    def _draw_graph(self) -> None:
+        self.canvas.delete("all")
+        self._layout()
+
+        for raw_link in getattr(self.graph, "links", []):
+            a, b = tuple(raw_link)
+            if a not in self.zone_pos or b not in self.zone_pos:
+                continue
+            x1, y1 = self.zone_pos[a]
+            x2, y2 = self.zone_pos[b]
+            self.canvas.create_line(x1, y1, x2, y2, fill=self.LINE, width=3)
 
         for name, zone in self.graph.zones.items():
-            x, y = self.to_canvas(zone.x, zone.y)
-            self.zone_pos[name] = (x, y)
-
-            color = zone.color if zone.color else "lightgray"
+            x, y = self.zone_pos[name]
+            fill = self._safe_color(getattr(zone, "color", None),
+                                    self.FALLBACK_ZONE)
+            outline = "#e2e8f0"
+            width = 2
+            if name == getattr(self.graph, "start", None):
+                outline = self.START
+                width = 4
+            elif name == getattr(self.graph, "end", None):
+                outline = self.END
+                width = 4
 
             self.canvas.create_oval(
                 x - self.zone_radius,
                 y - self.zone_radius,
                 x + self.zone_radius,
                 y + self.zone_radius,
-                fill=color,
-                outline="black",
-                width=2,
+                fill=fill,
+                outline=outline,
+                width=width,
             )
+            self.canvas.create_text(x, y - 2, text=name,
+                                    fill=self.TEXT, font=("Arial", 10, "bold"))
+            self.canvas.create_text(x, y + 14, text=f"({zone.x}, {zone.y})",
+                                    fill=self.MUTED, font=("Arial", 8))
 
-            self.canvas.create_text(
-                x,
-                y,
-                text=name,
-                font=("Arial", 10, "bold"),
-            )
-
-    def parse_token(
-        self, token: str
-    ) -> tuple[int, tuple[str, str] | tuple[str, str, str] | None]:
-        """
-        Parse one simulation token.
-
-        D1-a -> ("zone", "a")
-        D2-start-r1 -> ("edge", "start", "r1")
-        """
-        parts = token.split("-")
-        drone_id = int(parts[0][1:])
-
-        if len(parts) == 2:
-            return drone_id, ("zone", parts[1])
-
-        if len(parts) == 3:
-            return drone_id, ("edge", parts[1], parts[2])
-
-        return drone_id, None
-
-    def build_state(
-        self, turn: int
-    ) -> dict[int, tuple[str, str] | tuple[str, str, str]]:
-        """Build logical drone state after replaying turns [0, turn)."""
-        state: dict[int, tuple[str, str] | tuple[str, str, str]] = {}
-
-        if self.graph.start is not None:
-            for drone_id in self.drone_ids:
-                state[drone_id] = ("zone", self.graph.start)
-
-        for line in self.results[:turn]:
-            for token in line.split():
-                drone_id, info = self.parse_token(token)
-                if info is not None:
-                    state[drone_id] = info
-
-        return state
-
-    def build_positions(
-        self,
-        state: dict[int, tuple[str, str] | tuple[str, str, str]],
-    ) -> dict[int, tuple[float, float]]:
-        """Convert logical state to drawable positions."""
-        positions: dict[int, tuple[float, float]] = {}
-        zone_count: dict[str, int] = {}
-        edge_count: dict[tuple[str, str], int] = {}
-
-        for drone_id, info in sorted(state.items()):
-            if info[0] == "zone":
-                zone_name = info[1]
-                x, y = self.zone_pos[zone_name]
-
-                i = zone_count.get(zone_name, 0)
-                zone_count[zone_name] = i + 1
-
-                dx = (i % 3) * 12 - 12
-                dy = (i // 3) * 12 + 30
-                positions[drone_id] = (x + dx, y + dy)
-
-            elif info[0] == "edge" and len(info) == 3:
-                a, b = info[1], info[2]
-                x1, y1 = self.zone_pos[a]
-                x2, y2 = self.zone_pos[b]
-
-                i = edge_count.get((a, b), 0)
-                edge_count[(a, b)] = i + 1
-
-                x = (x1 + x2) / 2 + i * 10
-                y = (y1 + y2) / 2 + 15
-                positions[drone_id] = (x, y)
-
-        return positions
-
-    def draw_drones(self, positions: dict[int, tuple[float, float]]) -> None:
-        """Draw drones."""
-        self.canvas.delete("drone")
-
+    def _draw_drones(self, positions: dict[int, Pos]) -> None:
         for drone_id, (x, y) in sorted(positions.items()):
             self.canvas.create_oval(
-                x - 7,
-                y - 7,
-                x + 7,
-                y + 7,
-                fill="black",
-                outline="white",
+                x - 8,
+                y - 8,
+                x + 8,
+                y + 8,
+                fill=self.DRONE,
+                outline=self.DRONE_OUTLINE,
                 width=1,
-                tags="drone",
             )
-            self.canvas.create_text(
-                x,
-                y - 12,
-                text=f"D{drone_id}",
-                font=("Arial", 9),
-                tags="drone",
+            self.canvas.create_text(x, y - 14, text=f"D{drone_id}",
+                                    fill=self.TEXT, font=("Arial", 8, "bold"))
+
+    def _update_side_panel(self, state: dict[int, State]) -> None:
+        total = len(self.results)
+        arrived = sum(
+            1 for item in state.values()
+            if item == ("zone", getattr(self.graph, "end", None)))
+        moving = sum(
+            1 for item in state.values()
+            if item and item[0] == "edge")
+        waiting = max(len(self.drone_ids) - arrived - moving, 0)
+        self.turn_value.config(text=f"{self.turn} / {total}")
+
+        line = self.results[self.turn - 1] if 0 < self.turn <= total else ""
+        self.progress.config(text=line if line else "No moves this turn")
+        self.stats.config(
+            text=(
+                f"Drones: {len(self.drone_ids)}\n"
+                f"Arrived: {arrived}\n"
+                f"Moving: {moving}\n"
+                f"Waiting: {waiting}"
             )
+        )
 
-    def draw_turn(self, turn: int) -> None:
-        """Draw one turn directly."""
-        state = self.build_state(turn)
-        positions = self.build_positions(state)
-        self.current_pos = positions
-        self.turn = turn
-        self.turn_label.config(text=f"Turn {self.turn}")
-        self.draw_drones(positions)
+    def _redraw(self) -> None:
+        self._draw_graph()
+        state = self._state_at(self.turn)
+        self._draw_drones(self._positions(state))
+        self._update_side_panel(state)
 
-    def animate_to(self, target_turn: int) -> None:
-        """Animate from current turn to target turn."""
-        start_state = self.build_state(self.turn)
-        end_state = self.build_state(target_turn)
+    def _draw_turn(self, turn: int) -> None:
+        self.turn = max(0, min(turn, len(self.results)))
+        self._redraw()
 
-        start_pos = self.build_positions(start_state)
-        end_pos = self.build_positions(end_state)
+    def next_turn(self, _event: Any = None) -> None:
+        self._draw_turn(self.turn + 1)
 
-        all_ids = set(start_pos) | set(end_pos)
-        for drone_id in all_ids:
-            if drone_id not in start_pos:
-                start_pos[drone_id] = end_pos[drone_id]
-            if drone_id not in end_pos:
-                end_pos[drone_id] = start_pos[drone_id]
+    def prev_turn(self, _event: Any = None) -> None:
+        self._draw_turn(self.turn - 1)
 
-        self.animating = True
-        self.animate_frame(start_pos, end_pos, 0, target_turn)
+    def restart(self, _event: Any = None) -> None:
+        self._draw_turn(0)
 
-    def animate_frame(
-        self,
-        start_pos: dict[int, tuple[float, float]],
-        end_pos: dict[int, tuple[float, float]],
-        step: int,
-        target_turn: int,
-    ) -> None:
-        """Draw one animation frame."""
-        t = step / self.steps
-        current: dict[int, tuple[float, float]] = {}
-
-        for drone_id in start_pos:
-            x1, y1 = start_pos[drone_id]
-            x2, y2 = end_pos[drone_id]
-            x = x1 + (x2 - x1) * t
-            y = y1 + (y2 - y1) * t
-            current[drone_id] = (x, y)
-
-        self.draw_drones(current)
-        self.turn_label.config(text=f"Turn {target_turn}")
-
-        if step < self.steps:
-            self.root.after(
-                self.delay_ms,
-                lambda: self.animate_frame(
-                    start_pos,
-                    end_pos,
-                    step + 1,
-                    target_turn,
-                ),
-            )
-        else:
-            self.animating = False
-            self.draw_turn(target_turn)
+    def quit_ui(self, _event: Any = None) -> None:
+        self.root.destroy()

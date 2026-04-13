@@ -271,21 +271,3 @@ def parse_file(filename: str) -> tuple[int, Graph]:
             raise ValueError("Missing end_hub definition")
 
         return nb_drones, graph
-
-# parse_file(filename) 做的事情是：
-
-# 创建一个空 Graph
-
-# 逐行读地图文件
-
-# 跳过空行和注释
-
-# 读到 nb_drones 就保存无人机数量
-
-# 读到 start_hub / end_hub / hub 就创建 Zone
-
-# 读到 connection 就添加连接
-
-# 最后返回 (nb_drones, graph)
-
-# [testmain]???
