@@ -2,7 +2,7 @@
 
 ---
 
-## Description
+# Description
 
 This project implements a drone routing and simulation system that moves drones from a start zone to an end zone through a graph of interconnected zones.
 
@@ -21,16 +21,16 @@ The system includes:
 
 ---
 
-## Instructions
+# Instructions
 
-### Requirements
+## Requirements
 
 - Python 3.10+
 - No external dependencies (only Python standard library)
 
 ---
 
-### Installation
+## Installation
 
 No installation is required. 
 (Optional)
@@ -38,7 +38,7 @@ make install
 
 ---
 
-### Run
+## Run
 
 Run the simulation with a map file:
 python3 main.py <map_file_name>
@@ -57,14 +57,14 @@ make run-ui
 
 ---
  
-### Linting / Type Checking (optional)
+## Linting / Type Checking (optional)
 
 make lint
 make lint-strict
 
 ---
 
-## Input Format
+# Input Format
 
 The input file describes:
 - number of drones
@@ -73,13 +73,13 @@ The input file describes:
 
 ---
 
-### Drone Definition
+## Drone Definition
 
 nb_drones: <positive integer>
 
 ---
 
-### Zone Definition
+## Zone Definition
 
 <type>: <name> <x> <y> [metadata]
 
@@ -105,7 +105,7 @@ Types:
 - priority → cost 1 (preferred in pathfinding)
 - blocked → inaccessible
 
-### Connection Definition
+## Connection Definition
 
 connection: <zone1>-<zone2> [metadata]
 Metadata:
@@ -113,7 +113,7 @@ Metadata:
 
 ---
 
-### Example
+## Example
 
 nb_drones: 2
 
@@ -127,13 +127,13 @@ connection: B-C
 
 ---
 
-## Output Format
+# Output Format
 
 The simulation prints one line per turn.
 
 ---
 
-### Format
+## Format
 
 D<ID>-<zone>
 or (restricted movement)
@@ -141,7 +141,7 @@ D<ID>-<zone1>-<zone2>
 
 ---
 
-### Rules
+## Rules
 
 - each line represents one simulation turn
 - movements in the same turn are separated by spaces
@@ -153,7 +153,7 @@ D<ID>-<zone1>-<zone2>
 
 ---
 
-### Example Output
+## Example Output
 
 D1-A-B
 D1-B D2-A-B
@@ -162,89 +162,111 @@ D2-C
 
 ---
 
-## Algorithm and Implementation Strategy
+# Algorithm and Implementation Strategy
 
-### Pathfinding Approach
+## Core Strategy: Hybrid Pathfinding (Initial Path + Dynamic Replanning)
 
-The project uses a Dijkstra-based algorithm to compute the shortest path from start to end.
+This project uses a hybrid strategy combining:
 
-This is required because movement costs are not uniform:
-- normal / priority zones → 1 turn  
-- restricted zones → 2 turns
+- an initial shortest path (global baseline)
+- dynamic replanning (local optimization at each turn)
+
+### Initial Path (Baseline)
+
+At the start of the simulation, a shortest path is computed from the start zone to the end zone using Dijkstra:
+
+- this path serves as a baseline route
+- all drones are initially assigned this path
+- it provides a consistent direction and avoids chaotic early movement
+
+This improves:
+
+- stability in early turns
+- predictable drone flow
+- reduced unnecessary divergence
+
+### Dynamic Replanning (Core Mechanism)
+
+At each turn, every drone may recompute its path using Dijkstra from:
+
+- the start zone (initial turn)
+- or its current position (subsequent turns)
+
+The pathfinding dynamically avoids:
+
+- full zones (zone capacity reached)
+- saturated connections (link capacity reached)
+
+This allows drones to adapt to congestion in real time.
+
+## Pathfinding Details
+
+The system uses a modified Dijkstra algorithm because movement costs are not uniform:
+
+- normal / priority zones → cost = 1
+- restricted zones → cost = 2
 - blocked zones → inaccessible
 
-A simple BFS would treat all movements as equal-cost and would not correctly handle weighted movement costs.
+## Tie-breaking Strategy
 
----
+Paths are compared using:
 
-### Tie-breaking Strategy
-
-Priority zones do not reduce cost.
-
-Instead, paths are compared using:
 (cost, priority_score)
 
+Where:
+
+- cost = total travel time
+- priority_score = number of priority zones
+
 This ensures:
-- consistent path selection
-- deterministic behavior due to consistent tie-breaking and processing order
+
+- deterministic behavior
 - preference for priority zones when costs are equal
 
-### Simulation Design
+## Simulation Model
 
-The system is divided into two layers:
-1. Pathfinding layer
-    - computes optimal path
+Each turn consists of two phases:
 
-2. Simulation layer
-- enforces:
-    - zone capacity
-    - connection capacity
-    - movement scheduling (applies turn-by-turn movement rules)
-    - conflict avoidance (prevents invalid simultaneous moves)
+- Transit resolution
+	drones entering restricted zones complete movement
+- Movement phase
+	drones attempt to move one step along their path
+	path may be recomputed dynamically
 
----
+## Constraint Handling
 
-### Turn Structure
+Constraints are handled at two levels:
 
-Each turn has two phases:
-1. Finish transit
-    - drones moving into restricted zones arrive
-2. Move drones
-    - all other drones attempt movement
+1. Pathfinding level
+- avoids invalid moves early:
+	- full zones
+	- full links
+2. Execution level
+- ensures correctness in sequential simulation:
+	- final capacity validation
+	- conflict prevention
 
-### How Different Zone Types Behave
+## Design Philosophy
 
-- normal zone:
-entered in one turn
-printed as D<ID>-<zone>
+This implementation focuses on:
 
-- priority zone:
-entered in one turn
-same movement cost as normal
-preferred when path costs are equal
+- correctness over global optimality
+- simplicity and clarity
+- deterministic behavior
+- efficient local decision-making
 
-- restricted zone:
-entered over two turns
-first turn: the drone starts transit and is printed as D<ID>-<from>-<to>
-second turn: the drone arrives and is printed as D<ID>-<zone>
-the drone cannot wait inside the connection
+It does not compute a globally optimal schedule, but produces efficient and valid solutions that respect all constraints.
 
-- blocked zone:
-cannot be entered
-ignored by pathfinding
+## Intuition
 
----
+The system can be seen as:
 
-### Design Decisions
+- the initial path acting as a main route
+- dynamic replanning acting as real-time traffic adaptation
 
-    - restricted zones are implemented as multi-turn movements
-    - drones cannot wait inside connections
-    - capacity constraints are strictly enforced
-    - behavior is deterministic due to consistent processing order and tie-breaking
+Drones follow the main route by default, but can adjust when congestion occurs.
 
----
-
-## Visual Representation
+# Visual Representation
 
 The simulation provides both:
 - terminal-based output
@@ -252,7 +274,7 @@ The simulation provides both:
 
 ---
 
-### Features
+## Features
 
 - step-by-step movement visualization
 - clear drone identifiers (D1, D2, ...)
@@ -261,7 +283,7 @@ The simulation provides both:
 
 ---
 
-### Benefits
+## Benefits
 
 This improves:
 - understanding of drone behavior  
@@ -271,7 +293,7 @@ This improves:
 
 ---
 
-### Why not Pygame
+## Why not Pygame
 
 Pygame was not used because:
 
@@ -283,7 +305,7 @@ Tkinter (standard library) and terminal output are sufficient and compliant with
 
 ---
 
-## Project Structure
+# Project Structure
 
 main.py        # entry point  
 parser.py      # input parsing  
@@ -294,7 +316,7 @@ ui.py          # visualization
 
 ---
 
-## Resources
+# Resources
 
 - Dijkstra’s algorithm (https://www.youtube.com/watch?v=XB4MIexjvY0)
 - Python heapq documentation (https://www.youtube.com/watch?v=HqPJF2L5h9U)

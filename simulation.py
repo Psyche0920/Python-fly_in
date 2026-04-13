@@ -86,7 +86,7 @@ def dijkstra_path(
     # key: zone name
     # value: (cost, priority_score)
     best_seen: dict[str, tuple[int, int]] = {
-        gragh.start: (0, 0)
+        start_zone: (0, 0)
     }
 
     # if heap not empty, continue searching
