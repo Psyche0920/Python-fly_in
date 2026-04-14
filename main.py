@@ -4,7 +4,7 @@ import sys
 from parser import parse_file
 from simulation import simulate
 from formatter import print_result
-from ui import FlyUI
+from ui1 import FlyUI
 DEFAULT_MAP = "default.txt"
 
 
@@ -30,7 +30,6 @@ def main() -> None:
             print("No valid path from start to end.")
             return
 
-        # formatter now needs graph for colors
         print_result(result, graph)
 
         if use_ui:

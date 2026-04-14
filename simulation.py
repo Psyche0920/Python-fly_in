@@ -1,4 +1,4 @@
-import heapq  # whats the use why use this, heap??? list???
+import heapq
 from graph import Graph
 
 
@@ -31,7 +31,6 @@ def zone_priority_rank(graph: Graph, zone_name: str) -> int:
     if zone.zone_type == "priority":
         return 0
     return 1
-# tie-break = 当两个选择一样好时，用一个规则决定选谁
 
 
 def dijkstra_path(
