@@ -4,7 +4,7 @@ import sys
 from parser import parse_file
 from simulation import simulate
 from formatter import print_result
-from ui1 import FlyUI
+from ui import FlyUI
 DEFAULT_MAP = "default.txt"
 
 
