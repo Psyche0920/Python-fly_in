@@ -148,7 +148,23 @@ def zone_capacity(graph: Graph, zone_name: str) -> int:
     return graph.zones[zone_name].max_drones
 
 
-def simulate(nb_drones: int, graph: Graph) -> list[str]:
+def capacity_info_lines(graph, current_occupancy, link_usage) -> list[str]:
+    lines = []
+    for z_name, zone in graph.zones.items():
+        used = current_occupancy.get(z_name, 0)
+        cap = zone_capacity(graph, z_name)
+        lines.append(f"Zone {z_name}: {used}/{cap} drones")
+
+    for l_name, num in graph.links.items():
+        used = link_usage.get(l_name, 0)
+        a, b = tuple(l_name)
+        cap = graph.get_link_capacity(a, b)
+        lines.append(f"Connection {a}-{b}: {used}/{cap} capacity used")
+    return lines
+
+
+# def simulate(nb_drones: int, graph: Graph) -> list[str]:
+def simulate(nb_drones: int, graph: Graph, show_capacity: bool) -> list[str]:
     """
         Simulate drone movements turn by turn.
 
@@ -331,6 +347,10 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
 
         if moves:
             results.append(" ".join(moves))
+            if show_capacity is True:
+                results.extend(
+                    capacity_info_lines(graph, current_occupancy, link_usage)
+                )
 
         # all arrived
         if all(drone.delivered for drone in drones):
