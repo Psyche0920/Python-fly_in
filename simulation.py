@@ -177,8 +177,8 @@ def simulate(nb_drones: int, graph: Graph) -> list[str]:
         # Current real-time occupancy of zones
         current_occupancy: dict[str, int] = {}
         for drone in drones:
-            if drone.delivered:
-                continue
+            # if drone.delivered:
+            #     continue
             if drone.in_transit:
                 continue
             current_occupancy[drone.pos] = current_occupancy.get(drone.pos,

@@ -3,7 +3,7 @@ PYTHON = python3
 DEFAULT_MAP = default.txt
 VENV_DIR = .venv
 
-MYPY_FLAGS = --ignore-missing-imports --disallow-untyped-defs --check-untyped-defs
+MYPY_FLAGS = mypy . --warn-return-any --warn-unused-ignores --ignore-missing-imports --disallow-untyped-defs --check-untyped-defs
 
 .PHONY: install run run-ui debug clean lint lint-strict gitignore venv
 

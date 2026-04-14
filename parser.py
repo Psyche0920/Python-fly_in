@@ -84,13 +84,13 @@ def parse_metadata(meta: str, line_no: int) -> dict[str, str]:
     return result
 
 
-def validate_zone_name(name: str, line_no: int) -> None:  # connection 用 "-" 分割
+def validate_zone_name(name: str, line_no: int) -> None:
     """Validate a zone name."""
     if "-" in name or " " in name:
         raise parse_error(line_no, f"invalid zone name: {name}")
 
 
-def parse_positive_int(value: str, field: str, line_no: int) -> int:  # field?
+def parse_positive_int(value: str, field: str, line_no: int) -> int:
     """Parse a strictly positive integer field."""
     try:
         number = int(value)
@@ -119,7 +119,7 @@ def parse_file(filename: str) -> tuple[int, Graph]:
     """
 
     graph = Graph()
-    nb_drones: int | None = None  # 初始状态（还没解析）
+    nb_drones: int | None = None  # initial: not parsing et
 
     seen_names: set[str] = set()
     seen_start = False
@@ -128,8 +128,7 @@ def parse_file(filename: str) -> tuple[int, Graph]:
     with open(filename, "r", encoding="utf-8") as f:
 
         for line_no, raw_line in enumerate(f, start=1):
-            # enumerate 内置函数，它会为可迭代对象（如文件对象 f）中的每个元素生成一个索引和元素本身。
-            # 默认索引从 0 开始，但可以通过 start 参数指定起始值。
+
             line = raw_line.strip()
 
             # jump over empty line & notes
@@ -259,7 +258,6 @@ def parse_file(filename: str) -> tuple[int, Graph]:
                 graph.add_connection(z1, z2, capacity)
                 continue
             #  unknown syntax: other unmeaningful cases e.g. room 1-2-3
-            # 这一行已经检查完所有合法语法了，还是不匹配，那就报错
             raise parse_error(line_no, f"unknown statement: {line}")
 
             # final check
