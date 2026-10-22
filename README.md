@@ -1,3 +1,16 @@
+<!-- repository-badges:start -->
+<div align="center">
+
+[![Contributors](https://img.shields.io/github/contributors/Psyche0920/Python-fly_in?style=for-the-badge)](https://github.com/Psyche0920/Python-fly_in/graphs/contributors)
+[![Forks](https://img.shields.io/github/forks/Psyche0920/Python-fly_in?style=for-the-badge)](https://github.com/Psyche0920/Python-fly_in/forks)
+[![Stars](https://img.shields.io/github/stars/Psyche0920/Python-fly_in?style=for-the-badge)](https://github.com/Psyche0920/Python-fly_in/stargazers)
+[![Issues](https://img.shields.io/github/issues/Psyche0920/Python-fly_in?style=for-the-badge)](https://github.com/Psyche0920/Python-fly_in/issues)
+[![License](https://img.shields.io/badge/license-not_specified-lightgrey?style=for-the-badge)](https://github.com/Psyche0920/Python-fly_in)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Weijia_Han-0A66C2?style=for-the-badge&logo=linkedin)](https://www.linkedin.com/in/weijia-han-6162581b5/)
+
+</div>
+<!-- repository-badges:end -->
+
 # 🚁 Fly.in
 
 <p align="center">
