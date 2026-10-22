@@ -1,15 +1,4 @@
-<!-- repository-badges:start -->
-<div align="center">
-
-[![Contributors](https://img.shields.io/github/contributors/Psyche0920/Python-fly_in?style=for-the-badge)](https://github.com/Psyche0920/Python-fly_in/graphs/contributors)
-[![Forks](https://img.shields.io/github/forks/Psyche0920/Python-fly_in?style=for-the-badge)](https://github.com/Psyche0920/Python-fly_in/forks)
-[![Stars](https://img.shields.io/github/stars/Psyche0920/Python-fly_in?style=for-the-badge)](https://github.com/Psyche0920/Python-fly_in/stargazers)
-[![Issues](https://img.shields.io/github/issues/Psyche0920/Python-fly_in?style=for-the-badge)](https://github.com/Psyche0920/Python-fly_in/issues)
-[![License](https://img.shields.io/badge/license-not_specified-lightgrey?style=for-the-badge)](https://github.com/Psyche0920/Python-fly_in)
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-Weijia_Han-0A66C2?style=for-the-badge&logo=linkedin)](https://www.linkedin.com/in/weijia-han-6162581b5/)
-
-</div>
-<!-- repository-badges:end -->
+[![License: MIT](https://img.shields.io/badge/License-MIT-78C943?style=for-the-badge)](LICENSE)
 
 # 🚁 Fly.in
 
@@ -322,3 +311,8 @@ D2-C
 <p align="center">
   ⭐ If you like this project, give it a star!
 </p>
+
+
+## Licensing
+
+Project code is available under the [MIT License](LICENSE). Third-party assets retain their original licenses and attribution requirements; this license does not relicense third-party media, datasets, model weights, or trademarks.
